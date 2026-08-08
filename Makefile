@@ -1,4 +1,4 @@
-.PHONY: install lint format format-check typecheck test migrate run docker-up
+.PHONY: install lint format format-check typecheck test benchmark migrate run docker-up
 
 install:
 	pip install -e ".[dev]"
@@ -17,6 +17,9 @@ typecheck:
 
 test:
 	pytest
+
+benchmark:
+	python scripts/benchmark_backtest.py --rows 10000
 
 migrate:
 	alembic upgrade head

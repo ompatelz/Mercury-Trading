@@ -23,6 +23,11 @@ router = APIRouter(prefix="/market-data", tags=["market-data"])
     response_model=MarketDataIngestResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@router.post(
+    "/fetch",
+    response_model=MarketDataIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def ingest_market_data(
     request: MarketDataIngestRequest,
     session: Annotated[Session, Depends(get_session)],

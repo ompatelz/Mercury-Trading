@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +15,7 @@ class BacktestRequest(BaseModel):
     long_window: int = Field(default=50, ge=3)
     initial_capital: float = Field(default=10_000.0, gt=0)
     transaction_cost_bps: float = Field(default=1.0, ge=0)
+    slippage_bps: float = Field(default=0.0, ge=0)
 
     @model_validator(mode="after")
     def validate_windows(self) -> "BacktestRequest":
@@ -33,9 +35,26 @@ class ExperimentResponse(BaseModel):
     end_date: date
     data_interval: str
     transaction_cost_bps: float
+    slippage_bps: float
     created_at: datetime
     status: str
     metrics: dict[str, Any]
+    run_metadata: dict[str, Any]
     error_message: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class BacktestTradeResponse(BaseModel):
+    id: int
+    experiment_id: UUID
+    timestamp: datetime
+    side: str
+    quantity: Decimal
+    price: Decimal
+    notional: Decimal
+    transaction_cost: Decimal
+    slippage_cost: Decimal
+    realized_pnl: Decimal | None
 
     model_config = {"from_attributes": True}

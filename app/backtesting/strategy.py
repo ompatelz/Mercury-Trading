@@ -1,4 +1,24 @@
+from typing import Protocol
+
 import polars as pl
+
+
+class Strategy(Protocol):
+    name: str
+
+    def generate_signals(self, bars: pl.DataFrame) -> pl.DataFrame:
+        """Return bars with a point-in-time safe position column."""
+
+
+class MovingAverageCrossoverStrategy:
+    name = "moving_average_crossover"
+
+    def __init__(self, short_window: int, long_window: int) -> None:
+        self.short_window = short_window
+        self.long_window = long_window
+
+    def generate_signals(self, bars: pl.DataFrame) -> pl.DataFrame:
+        return moving_average_crossover_signals(bars, self.short_window, self.long_window)
 
 
 def moving_average_crossover_signals(
