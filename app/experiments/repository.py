@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.experiment import Experiment
+from app.models.experiment import BacktestTradeRecord, Experiment
 
 
 class ExperimentRepository:
@@ -18,3 +18,11 @@ class ExperimentRepository:
 
     def get(self, experiment_id: UUID) -> Experiment | None:
         return self.session.scalar(select(Experiment).where(Experiment.id == experiment_id))
+
+    def list_trades(self, experiment_id: UUID) -> list[BacktestTradeRecord]:
+        stmt = (
+            select(BacktestTradeRecord)
+            .where(BacktestTradeRecord.experiment_id == experiment_id)
+            .order_by(BacktestTradeRecord.timestamp, BacktestTradeRecord.id)
+        )
+        return list(self.session.scalars(stmt).all())

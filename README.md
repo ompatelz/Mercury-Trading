@@ -1,21 +1,31 @@
 # Mercury
 
-Mercury is a self-improving autonomous quant research platform. Phase 1 is deliberately small: it builds the backend foundation that later research agents, memory systems, and orchestration can depend on.
+Mercury is a self-improving autonomous quant research platform. Phase 2 builds the
+market-data and backtesting engine that future autonomous agents will use as a
+deterministic research tool.
 
-## What Phase 1 Supports
+Phase 2 deliberately excludes agentic strategy generation, memory, RAG, and
+self-improvement loops. The priority is a reproducible experiment path: ingest data,
+run a strategy, simulate trades, calculate metrics, persist results, and expose the
+workflow through the API.
+
+## What Phase 2 Supports
 
 - Fetch historical OHLCV bars through a provider interface.
-- Normalize and validate market data before persistence.
-- Store bars and experiment records in PostgreSQL.
-- Expose a typed FastAPI REST API.
-- Run one baseline moving-average crossover backtest.
-- Persist reproducible experiment metadata and metrics.
-- Run locally with Docker Compose.
-- Run CI checks with GitHub Actions.
+- Normalize, validate, store, and query market data.
+- Run a moving-average crossover strategy.
+- Simulate long-only trades with cash, shares, fees, and slippage.
+- Calculate total return, annualized return, Sharpe, Sortino, volatility, max
+  drawdown, win rate, turnover, costs, and ending portfolio value.
+- Persist experiment metadata, metrics, observability metadata, and trade records.
+- Expose market-data and backtest workflows through typed FastAPI endpoints.
+- Run deterministic unit and integration tests without live market-data calls.
+- Keep Docker and GitHub Actions ready for CI.
 
 ## Architecture
 
-Mercury Phase 1 is a modular monolith. A modular monolith keeps one deployable application while separating HTTP, market-data, backtesting, experiment, and persistence concerns. That is the right tradeoff before the platform has enough complexity to justify services, queues, or distributed infrastructure.
+Mercury remains a modular monolith: one deployable application with separated
+HTTP, service, strategy, backtesting, metrics, and persistence boundaries.
 
 ```mermaid
 flowchart TD
@@ -24,43 +34,51 @@ flowchart TD
     API --> Services["Service layer"]
     Services --> Provider["MarketDataProvider interface"]
     Provider --> Yahoo["Yahoo Finance provider"]
-    Services --> Normalize["Polars normalization and validation"]
-    Normalize --> DB["PostgreSQL via SQLAlchemy"]
-    Services --> Backtester["Moving-average backtester"]
-    Backtester --> Metrics["Return, Sharpe, drawdown, trades"]
-    Metrics --> Experiments["Experiment record"]
+    Services --> Normalize["Polars normalization"]
+    Normalize --> MarketRepo["MarketDataRepository"]
+    MarketRepo --> DB["PostgreSQL"]
+    Services --> Strategy["Strategy interface"]
+    Strategy --> MACross["MovingAverageCrossoverStrategy"]
+    Services --> Engine["Python backtesting engine"]
+    Engine --> Trades["Trade simulation"]
+    Engine --> Metrics["Reusable metrics"]
+    Services --> Experiments["Experiment persistence"]
     Experiments --> DB
 ```
 
-### Request Flow
+## Backtest Flow
 
 ```text
-API request
-  -> Pydantic request validation
-  -> thin FastAPI route
-  -> service layer
-  -> provider, repository, or backtester
-  -> SQLAlchemy session
-  -> PostgreSQL
-  -> typed response schema
+fetch data
+  -> normalize and store OHLCV bars
+  -> load bars for symbol and date range
+  -> generate moving-average signals
+  -> shift signals by one bar to avoid look-ahead bias
+  -> execute simulated buy/sell trades at the next bar open
+  -> apply transaction fees and slippage
+  -> mark portfolio value at each close
+  -> calculate metrics
+  -> store experiment result and trades
+  -> return a typed API response
 ```
+
+The strategy decides desired exposure. The engine decides execution, portfolio
+accounting, costs, equity, metrics, and persistence. That split is important
+because future agents should be able to swap strategies without changing the
+backtester.
 
 ## Technology Choices
 
-- FastAPI provides the REST API layer, request validation hooks, and OpenAPI documentation.
-- Pydantic schemas define explicit request and response contracts instead of returning raw ORM objects.
-- SQLAlchemy ORM maps Python objects to database rows while keeping persistence details out of business logic.
-- Alembic manages database migrations; production startup should not rely on `Base.metadata.create_all()`.
-- PostgreSQL is durable, familiar, and supports JSONB experiment metadata.
-- Polars is used for market-data normalization and backtest table calculations.
-- NumPy supports metric calculations such as Sharpe ratio and max drawdown.
-- Docker images package the application; Docker containers are running instances of those images.
-- Docker Compose starts the API and PostgreSQL together for local development.
-- GitHub Actions runs CI checks on pushes and pull requests.
-
-## What We Are Not Adding Yet
-
-Phase 1 intentionally excludes LLM agents, LangGraph, Redis, embeddings, RAG, Kafka, Kubernetes, TimescaleDB, and microservices. Those tools may become useful later, but adding them before the data, backtest, and experiment foundation is stable would create operational complexity without improving the core research workflow.
+- FastAPI provides REST endpoints and OpenAPI documentation.
+- Pydantic defines request and response contracts.
+- SQLAlchemy maps Python models to PostgreSQL tables.
+- Alembic versions schema changes.
+- PostgreSQL stores market bars, experiments, metrics, metadata, and trades.
+- yfinance is the first development market-data provider.
+- Polars handles tabular market-data transformations and signal generation.
+- NumPy supports reusable performance metric calculations.
+- pytest validates deterministic behavior.
+- Ruff and mypy keep formatting, linting, and types checked in CI.
 
 ## Local Setup
 
@@ -79,30 +97,6 @@ docker compose up --build
 
 The API will be available at `http://localhost:8000`.
 
-## Environment Configuration
-
-`DATABASE_URL` controls the database connection.
-
-Local host example:
-
-```bash
-DATABASE_URL=postgresql+psycopg://mercury:mercury@localhost:5432/mercury
-```
-
-Docker Compose example:
-
-```bash
-DATABASE_URL=postgresql+psycopg://mercury:mercury@db:5432/mercury
-```
-
-## Database Migrations
-
-Database migrations are versioned schema changes. Mercury uses Alembic so schema changes are explicit, reviewable, and repeatable.
-
-```bash
-alembic upgrade head
-```
-
 ## Developer Commands
 
 ```bash
@@ -111,9 +105,11 @@ ruff format .
 ruff format --check .
 mypy app
 pytest
+python scripts/benchmark_backtest.py --rows 10000
 alembic upgrade head
 uvicorn app.main:app --reload
 docker compose up --build
+docker build .
 ```
 
 ## API Examples
@@ -127,7 +123,7 @@ curl http://localhost:8000/health
 Ingest market data:
 
 ```bash
-curl -X POST http://localhost:8000/market-data/ingest \
+curl -X POST http://localhost:8000/market-data/fetch \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d"}'
 ```
@@ -143,60 +139,118 @@ Run a backtest:
 ```bash
 curl -X POST http://localhost:8000/backtests \
   -H "Content-Type: application/json" \
-  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d","short_window":20,"long_window":50,"initial_capital":10000,"transaction_cost_bps":1}'
+  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d","short_window":20,"long_window":50,"initial_capital":10000,"transaction_cost_bps":1,"slippage_bps":2}'
+```
+
+Read a backtest:
+
+```bash
+curl http://localhost:8000/backtests/{id}
+curl http://localhost:8000/backtests/{id}/trades
 ```
 
 ## Backtesting Notes
 
 The baseline strategy is moving-average crossover:
 
-- Calculate short and long moving averages from close prices.
-- Target long exposure when short MA is above long MA.
-- Shift the signal by one bar before applying returns.
-- Charge transaction costs whenever the position changes.
+- Calculate fast and slow moving averages from close prices.
+- Target long exposure when the fast average is above the slow average.
+- Target flat exposure when the fast average is below the slow average.
+- Shift the signal by one bar before execution.
 
-The signal shift is how the implementation avoids look-ahead bias: today’s return is multiplied by the position known before today’s return is realized, not by a signal computed after seeing the close.
+The signal shift is Mercury's first look-ahead prevention rule. A signal computed
+from one bar's close is not allowed to earn that same bar's return. The engine
+executes position changes at the following bar open and marks equity at the close.
 
-Transaction costs model the friction paid when changing exposure. Sharpe ratio measures average return per unit of volatility, annualized using 252 trading days. Max drawdown measures the largest peak-to-trough equity decline.
+Transaction costs are charged as basis points of executed notional. Slippage moves
+the execution price against Mercury: buys pay above the open, sells receive below
+the open. Portfolio value is cash plus shares marked to the current close.
 
-## Testing
+## Metrics
 
-Unit tests verify market-data normalization, duplicate handling, moving-average signals, transaction-cost application, and metric calculations.
+- Total return: ending portfolio value divided by starting capital, minus one.
+- Annualized return: total return scaled to 252 trading days.
+- Sharpe ratio: average strategy return per unit of volatility, annualized.
+- Sortino ratio: average strategy return per unit of downside volatility.
+- Maximum drawdown: largest peak-to-trough equity decline.
+- Volatility: annualized standard deviation of strategy returns.
+- Win rate: percentage of closed trades with positive realized PnL.
+- Turnover: executed notional divided by average equity.
+- Transaction costs and slippage costs: total simulated friction paid.
 
-Integration tests use FastAPI’s test client with a stubbed market-data provider. That keeps external Yahoo calls out of tests while still verifying the ingest, backtest, and experiment retrieval flow.
+## Testing And CI
 
-Mocks and stubs replace slow or unreliable external dependencies with deterministic test doubles.
+Tests use deterministic fixtures and a stubbed market-data provider so CI does not
+depend on Yahoo Finance availability.
 
-## CI
+GitHub Actions runs on pushes to `main` and pull requests targeting `main`:
 
-GitHub Actions runs on pushes to `main` and pull requests targeting `main`.
+1. Install dependencies.
+2. Run Alembic migrations against PostgreSQL.
+3. Run Ruff lint.
+4. Run Ruff format check.
+5. Run mypy.
+6. Run pytest, including integration tests.
+7. Build the Docker image.
 
-The CI workflow:
+## C++ Optimization Candidates
 
-1. Installs Python 3.12 dependencies.
-2. Starts a PostgreSQL service container.
-3. Runs Alembic migrations.
-4. Runs Ruff linting.
-5. Runs Ruff formatting checks.
-6. Runs mypy type checks.
-7. Runs pytest.
-8. Builds the Docker image.
+Keep the engine Python-first until profiling proves a real bottleneck. Future C++
+components should be exposed back to Python with pybind11 so Mercury keeps a
+simple API while moving hot loops to native code.
 
-CI means continuous integration: it verifies the branch is healthy. CD means continuous delivery or deployment: it releases software to an environment. Mercury delays CD because Phase 1 does not yet define a real production environment, secrets process, release policy, or operational monitoring.
+Realistic future candidates:
 
-## Database Schema
+- Event-driven backtest loop for very large datasets.
+- Portfolio accounting and order execution when position logic becomes complex.
+- Large-scale indicator calculation across many symbols.
+- Order-book or high-frequency simulation.
+- Market-data processing where Python dataframe overhead dominates runtime.
 
-`market_bars` stores normalized OHLCV bars. The unique constraint on `(symbol, timestamp, interval)` prevents accidental duplicate rows, and the index supports symbol/time-range queries.
+## Reading Guide
 
-`experiments` stores one reproducible backtest run. Parameters and metrics use JSON/JSONB because different strategies will later have different parameter and metric shapes.
+### Must Read
 
-## Current Limitations
+- `app/main.py`: creates the FastAPI application and includes route modules.
+- `app/backtesting/engine.py`: simulates trades, costs, equity, metrics, and
+  observability metadata.
+- `app/backtesting/strategy.py`: defines the strategy boundary and moving-average
+  crossover signal generation.
+- `app/backtesting/metrics.py`: reusable objective/evaluation metrics.
+- `app/experiments/service.py`: connects stored data, strategy execution, and
+  experiment persistence.
 
-- Only one strategy exists.
-- The Yahoo provider is suitable for development, not institutional data quality.
-- There is no authentication or authorization.
-- There is no production deployment.
-- There is no portfolio-level multi-asset backtesting.
-- There is no agentic research loop yet.
+### Read Next
 
+- `app/models/market_data.py`: OHLCV table shape and uniqueness rules.
+- `app/models/experiment.py`: experiment and trade persistence models.
+- `app/market_data/service.py`: ingestion orchestration.
+- `app/market_data/repository.py`: market-bar upsert and query behavior.
+- `app/market_data/normalization.py`: provider data validation and normalization.
+- `app/market_data/provider.py`: provider interface.
+- `app/market_data/yahoo.py`: yfinance provider implementation.
+- `app/api/routes/market_data.py`: market-data HTTP workflow.
+- `app/api/routes/backtests.py`: backtest HTTP workflow.
+- `app/schemas/experiment.py`: typed backtest request, result, and trade contracts.
+- `tests/unit/test_backtesting.py`: deterministic strategy, execution, cost, and
+  metric checks.
+- `tests/integration/test_api.py`: end-to-end API workflow test.
 
+### Can Skim
+
+- `app/core/config.py`: environment-driven app settings.
+- `app/db/session.py`: SQLAlchemy engine and session setup.
+- `alembic/versions/*.py`: database migration history.
+- `.github/workflows/ci.yml`: CI pipeline.
+- `Dockerfile` and `docker-compose.yml`: containerized runtime.
+- `Makefile`: local command shortcuts.
+- `scripts/benchmark_backtest.py`: synthetic Python backtester benchmark.
+
+The five most important files after Phase 2 are `app/backtesting/engine.py`,
+`app/backtesting/strategy.py`, `app/backtesting/metrics.py`,
+`app/experiments/service.py`, and `app/models/experiment.py`.
+
+Mental model: the strategy turns bars into desired positions, the engine turns
+positions into trades and equity, metrics score the equity/trades, the experiment
+service persists the run, and the experiment models define exactly what survives
+in PostgreSQL for future agents to inspect.

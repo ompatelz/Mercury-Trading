@@ -10,7 +10,7 @@ def test_health_endpoint(client: TestClient) -> None:
 
 def test_ingest_and_backtest_flow(client: TestClient) -> None:
     ingest_response = client.post(
-        "/market-data/ingest",
+        "/market-data/fetch",
         json={"symbol": "MSFT", "start": "2024-01-01", "end": "2024-01-11", "interval": "1d"},
     )
     assert ingest_response.status_code == 201
@@ -31,13 +31,20 @@ def test_ingest_and_backtest_flow(client: TestClient) -> None:
             "long_window": 3,
             "initial_capital": 10000,
             "transaction_cost_bps": 1,
+            "slippage_bps": 2,
         },
     )
     assert backtest_response.status_code == 201
     experiment = backtest_response.json()
     assert experiment["strategy_name"] == "moving_average_crossover"
     assert "sharpe_ratio" in experiment["metrics"]
+    assert "sortino_ratio" in experiment["metrics"]
+    assert experiment["run_metadata"]["candles_processed"] == 10
 
-    get_response = client.get(f"/experiments/{experiment['id']}")
+    get_response = client.get(f"/backtests/{experiment['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["id"] == experiment["id"]
+
+    trades_response = client.get(f"/backtests/{experiment['id']}/trades")
+    assert trades_response.status_code == 200
+    assert len(trades_response.json()) == experiment["metrics"]["number_of_trades"]
