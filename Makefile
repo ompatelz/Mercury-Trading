@@ -1,4 +1,4 @@
-.PHONY: install lint format format-check typecheck test benchmark migrate run docker-up
+.PHONY: install lint format format-check typecheck native-build test benchmark migrate run docker-up
 
 install:
 	pip install -e ".[dev]"
@@ -14,6 +14,9 @@ format-check:
 
 typecheck:
 	mypy app
+
+native-build:
+	python scripts/build_native.py
 
 test:
 	pytest

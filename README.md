@@ -15,6 +15,7 @@ workflow through the API.
 - Normalize, validate, store, and query market data.
 - Run a moving-average crossover strategy.
 - Simulate long-only trades with cash, shares, fees, and slippage.
+- Build and test a small pybind11 C++ execution loop against the Python reference.
 - Calculate total return, annualized return, Sharpe, Sortino, volatility, max
   drawdown, win rate, turnover, costs, and ending portfolio value.
 - Persist experiment metadata, metrics, observability metadata, and trade records.
@@ -77,6 +78,8 @@ backtester.
 - yfinance is the first development market-data provider.
 - Polars handles tabular market-data transformations and signal generation.
 - NumPy supports reusable performance metric calculations.
+- pybind11 exposes selected C++ execution code to Python without replacing the
+  Python-first architecture.
 - pytest validates deterministic behavior.
 - Ruff and mypy keep formatting, linting, and types checked in CI.
 
@@ -104,6 +107,7 @@ ruff check .
 ruff format .
 ruff format --check .
 mypy app
+python scripts/build_native.py
 pytest
 python scripts/benchmark_backtest.py --rows 10000
 alembic upgrade head
@@ -193,11 +197,31 @@ GitHub Actions runs on pushes to `main` and pull requests targeting `main`:
 6. Run pytest, including integration tests.
 7. Build the Docker image.
 
-## C++ Optimization Candidates
+## C++ Acceleration
 
-Keep the engine Python-first until profiling proves a real bottleneck. Future C++
-components should be exposed back to Python with pybind11 so Mercury keeps a
-simple API while moving hot loops to native code.
+Mercury now includes a small native execution loop in
+`app/backtesting/native/engine.cpp`. The Python engine remains the correctness
+reference; the native module is tested through Python/C++ parity tests before it
+can be trusted.
+
+Build it with:
+
+```bash
+python scripts/build_native.py
+```
+
+The repository also includes `CMakeLists.txt` for environments that prefer CMake:
+
+```bash
+cmake -S . -B build/native
+cmake --build build/native --config Release
+```
+
+## Future C++ Optimization Candidates
+
+Keep expanding the engine Python-first until profiling proves a real bottleneck.
+Future C++ components should continue to be exposed back to Python with pybind11
+so Mercury keeps a simple API while moving hot loops to native code.
 
 Realistic future candidates:
 
@@ -214,6 +238,8 @@ Realistic future candidates:
 - `app/main.py`: creates the FastAPI application and includes route modules.
 - `app/backtesting/engine.py`: simulates trades, costs, equity, metrics, and
   observability metadata.
+- `app/backtesting/native/engine.cpp`: native execution loop tested against the
+  Python reference.
 - `app/backtesting/strategy.py`: defines the strategy boundary and moving-average
   crossover signal generation.
 - `app/backtesting/metrics.py`: reusable objective/evaluation metrics.
@@ -234,6 +260,7 @@ Realistic future candidates:
 - `app/schemas/experiment.py`: typed backtest request, result, and trade contracts.
 - `tests/unit/test_backtesting.py`: deterministic strategy, execution, cost, and
   metric checks.
+- `tests/unit/test_native_backtesting.py`: Python/C++ parity checks.
 - `tests/integration/test_api.py`: end-to-end API workflow test.
 
 ### Can Skim
@@ -242,9 +269,11 @@ Realistic future candidates:
 - `app/db/session.py`: SQLAlchemy engine and session setup.
 - `alembic/versions/*.py`: database migration history.
 - `.github/workflows/ci.yml`: CI pipeline.
+- `CMakeLists.txt`: pybind11 native module build configuration.
 - `Dockerfile` and `docker-compose.yml`: containerized runtime.
 - `Makefile`: local command shortcuts.
 - `scripts/benchmark_backtest.py`: synthetic Python backtester benchmark.
+- `scripts/build_native.py`: direct pybind11 extension build script.
 
 The five most important files after Phase 2 are `app/backtesting/engine.py`,
 `app/backtesting/strategy.py`, `app/backtesting/metrics.py`,

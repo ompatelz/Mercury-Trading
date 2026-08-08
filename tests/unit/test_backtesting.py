@@ -1,6 +1,7 @@
 import math
 
 import polars as pl
+import pytest
 
 from app.backtesting.engine import run_moving_average_backtest
 from app.backtesting.metrics import (
@@ -40,6 +41,35 @@ def test_moving_average_signal_uses_prior_signal_for_position() -> None:
 
     assert positions[0] == 0.0
     assert positions[4] == raw_signal[3]
+
+
+def test_backtest_executes_prior_close_signal_at_current_open() -> None:
+    result = run_moving_average_backtest(trend_bars(), 2, 3, 10_000, 0.0, 0.0)
+    signals = moving_average_crossover_signals(trend_bars(), short_window=2, long_window=3)
+    raw_signal = (
+        signals.with_columns(
+            (pl.col("short_ma") > pl.col("long_ma")).cast(pl.Float64).alias("raw_signal")
+        )
+        .get_column("raw_signal")
+        .to_list()
+    )
+
+    first_buy = result.trades[0]
+    first_buy_index = trend_bars().get_column("timestamp").to_list().index(first_buy.timestamp)
+
+    assert raw_signal[first_buy_index - 1] == 1.0
+    assert first_buy.price == trend_bars().row(first_buy_index, named=True)["open"]
+
+
+def test_backtest_known_accounting_without_costs() -> None:
+    result = run_moving_average_backtest(trend_bars(), 2, 3, 10_000, 0.0, 0.0)
+
+    assert result.trades[0].side == "BUY"
+    assert result.trades[0].quantity == pytest.approx(10_000 / 12)
+    assert result.trades[0].price == 12
+    assert result.trades[1].side == "SELL"
+    assert result.trades[1].price == 16
+    assert result.trades[1].realized_pnl == pytest.approx((10_000 / 12) * 16 - 10_000)
 
 
 def test_backtest_applies_transaction_costs() -> None:
