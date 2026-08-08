@@ -1,0 +1,12 @@
+.env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.egg-info/
+*.py[cod]
+.venv/
+dist/
+build/
+postgres-data/
+
