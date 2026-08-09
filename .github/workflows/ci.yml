@@ -8,6 +8,7 @@ on:
 
 jobs:
   quality:
+    name: Quality, Native, Tests, Integration
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -41,10 +42,17 @@ jobs:
         run: ruff format --check .
       - name: mypy
         run: mypy app
-      - name: pytest
+      - name: CMake configure
+        run: cmake -S . -B build/native -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+      - name: C++ pybind11 build
+        run: cmake --build build/native --config Release
+      - name: Native extension import
+        run: python -c "import app.backtesting.native._engine"
+      - name: Unit and integration tests
         run: pytest
 
   docker-build:
+    name: Docker Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
