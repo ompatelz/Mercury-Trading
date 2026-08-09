@@ -61,6 +61,24 @@ def test_backtest_executes_prior_close_signal_at_current_open() -> None:
     assert first_buy.price == trend_bars().row(first_buy_index, named=True)["open"]
 
 
+def test_backtest_does_not_trade_on_same_bar_signal() -> None:
+    bars = trend_bars()
+    result = run_moving_average_backtest(bars, 2, 3, 10_000, 0.0, 0.0)
+    signals = moving_average_crossover_signals(bars, short_window=2, long_window=3)
+    raw_signal = (
+        signals.with_columns(
+            (pl.col("short_ma") > pl.col("long_ma")).cast(pl.Float64).alias("raw_signal")
+        )
+        .get_column("raw_signal")
+        .to_list()
+    )
+
+    first_buy_index = bars.get_column("timestamp").to_list().index(result.trades[0].timestamp)
+
+    assert raw_signal[first_buy_index] == 1.0
+    assert result.trades[0].timestamp != bars.get_column("timestamp").to_list()[first_buy_index - 1]
+
+
 def test_backtest_known_accounting_without_costs() -> None:
     result = run_moving_average_backtest(trend_bars(), 2, 3, 10_000, 0.0, 0.0)
 
@@ -110,3 +128,13 @@ def test_metric_calculations() -> None:
     assert sharpe_ratio(returns) != 0.0
     assert sortino_ratio(returns) == 0.0
     assert volatility(returns) > 0.0
+
+
+def test_backtest_known_end_to_end_metrics_without_costs() -> None:
+    result = run_moving_average_backtest(trend_bars(), 2, 3, 10_000, 0.0, 0.0)
+
+    assert result.metrics["number_of_trades"] == 3
+    assert result.metrics["transaction_costs"] == 0.0
+    assert result.metrics["slippage_costs"] == 0.0
+    assert result.metrics["ending_equity"] == pytest.approx(13_333.333333333334)
+    assert result.metrics["total_return"] == pytest.approx(1 / 3)

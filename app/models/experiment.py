@@ -53,3 +53,31 @@ class BacktestTradeRecord(Base):
     realized_pnl: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
 
     experiment: Mapped[Experiment] = relationship(back_populates="trades")
+
+
+class ResearchExperiment(Base):
+    __tablename__ = "research_experiments"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    interval: Mapped[str] = mapped_column(String(16), nullable=False)
+    execution_engine: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    hypothesis: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    strategy: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    backtest_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("experiments.id", ondelete="SET NULL"), nullable=True
+    )
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evaluation: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    critique: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    report: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    model_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    workflow_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -34,3 +34,17 @@ def test_normalize_bars_rejects_invalid_ohlc_values() -> None:
 
     with pytest.raises(MarketDataValidationError, match="OHLC consistency"):
         normalize_bars(raw, symbol="MSFT", interval="1d")
+
+
+def test_normalize_bars_rejects_missing_columns() -> None:
+    raw = sample_raw_bars().drop("Volume")
+
+    with pytest.raises(MarketDataValidationError, match="missing required market data columns"):
+        normalize_bars(raw, symbol="MSFT", interval="1d")
+
+
+def test_normalize_bars_rejects_null_values() -> None:
+    raw = sample_raw_bars().with_columns(pl.lit(None).alias("Close"))
+
+    with pytest.raises(MarketDataValidationError, match="null values"):
+        normalize_bars(raw, symbol="MSFT", interval="1d")

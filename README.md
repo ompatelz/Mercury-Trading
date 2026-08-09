@@ -4,10 +4,10 @@ Mercury is a self-improving autonomous quant research platform. Phase 2 builds t
 market-data and backtesting engine that future autonomous agents will use as a
 deterministic research tool.
 
-Phase 2 deliberately excludes agentic strategy generation, memory, RAG, and
-self-improvement loops. The priority is a reproducible experiment path: ingest data,
-run a strategy, simulate trades, calculate metrics, persist results, and expose the
-workflow through the API.
+Phase 3 adds Mercury's first agentic research loop. Agents propose and critique
+experiments, while deterministic Mercury tools still calculate trades, cash, equity,
+and metrics. This phase deliberately excludes long-term RAG memory, prompt mutation,
+Bayesian optimization, bandits, RL, and autonomous agent rewriting.
 
 ## What Phase 2 Supports
 
@@ -20,6 +20,11 @@ workflow through the API.
   drawdown, win rate, turnover, costs, and ending portfolio value.
 - Persist experiment metadata, metrics, observability metadata, and trade records.
 - Expose market-data and backtest workflows through typed FastAPI endpoints.
+- Run a typed research workflow from objective to hypothesis, strategy spec,
+  deterministic backtest, risk evaluation, critique, persisted record, and report.
+- Validate agent-selected strategies against an approved registry.
+- Test the full agent workflow with a deterministic local model boundary, so normal
+  CI does not require external LLM credentials.
 - Run deterministic unit and integration tests without live market-data calls.
 - Keep Docker and GitHub Actions ready for CI.
 
@@ -45,7 +50,40 @@ flowchart TD
     Engine --> Metrics["Reusable metrics"]
     Services --> Experiments["Experiment persistence"]
     Experiments --> DB
+    API --> Research["Research experiment route"]
+    Research --> Workflow["Typed research workflow"]
+    Workflow --> Registry["Strategy registry"]
+    Workflow --> Engine
+    Workflow --> ResearchDB["Research experiment persistence"]
+    ResearchDB --> DB
 ```
+
+## Phase 3 Research Flow
+
+```text
+research objective
+  -> hypothesis node returns structured hypothesis fields
+  -> strategy node returns an approved strategy specification
+  -> strategy registry validates strategy name and parameters
+  -> backtest tool calls the existing ExperimentService
+  -> Python backtester calculates trades, equity, and metrics
+  -> evaluation node interprets measured metrics
+  -> critic node critiques the experiment design
+  -> research experiment record stores prompts/model/workflow metadata
+  -> structured report separates measured facts from interpretation
+```
+
+Agents vs workflows: the workflow is the explicit sequence and state transitions;
+the agents are the probabilistic reasoning steps inside that sequence. Structured
+outputs are Pydantic models that force model responses into known fields instead
+of brittle free text. Tool calling means the model chooses a valid experiment, but
+Mercury's deterministic backtest tool calculates what actually happened.
+
+LangGraph is not introduced yet. The Phase 3 graph is linear and easier to audit as
+plain Python typed state. The same concepts are present: `ResearchWorkflowState` is
+state, each node function is a graph node, and the function call order is the edge
+list. LangGraph becomes useful when Mercury needs branching, retries, parallel
+hypotheses, or human review interrupts.
 
 ## Backtest Flow
 
@@ -146,6 +184,14 @@ curl -X POST http://localhost:8000/backtests \
   -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d","short_window":20,"long_window":50,"initial_capital":10000,"transaction_cost_bps":1,"slippage_bps":2}'
 ```
 
+Run a research experiment after deterministic bars already exist:
+
+```bash
+curl -X POST http://localhost:8000/research/experiments \
+  -H "Content-Type: application/json" \
+  -d '{"objective":"Explore trend-following behavior on MSFT","symbol":"MSFT","start_date":"2024-01-01","end_date":"2024-06-01","interval":"1d"}'
+```
+
 Read a backtest:
 
 ```bash
@@ -194,8 +240,20 @@ GitHub Actions runs on pushes to `main` and pull requests targeting `main`:
 3. Run Ruff lint.
 4. Run Ruff format check.
 5. Run mypy.
-6. Run pytest, including integration tests.
-7. Build the Docker image.
+6. Configure and build the pybind11 extension with CMake.
+7. Import the native extension.
+8. Run pytest, including quant, parity, agent, API, and persistence tests.
+9. Build the Docker image.
+
+This is CI, not full CD. CI means build, lint, test, and validate every change.
+CD means automatically releasing or deploying verified software. Mercury is
+CI/CD-ready in the sense that Docker artifacts are deployable, but production
+deployment is intentionally deferred to a future phase.
+
+Recommended required branch-protection checks for `main`:
+
+- `Quality, Native, Tests, Integration`
+- `Docker Build`
 
 ## C++ Acceleration
 
@@ -236,6 +294,10 @@ Realistic future candidates:
 ### Must Read
 
 - `app/main.py`: creates the FastAPI application and includes route modules.
+- `app/research/workflow.py`: explicit Phase 3 research workflow state and nodes.
+- `app/research/service.py`: persists completed research experiments.
+- `app/research/schemas.py`: structured agent, tool, and report contracts.
+- `app/backtesting/registry.py`: approved strategy validation boundary.
 - `app/backtesting/engine.py`: simulates trades, costs, equity, metrics, and
   observability metadata.
 - `app/backtesting/native/engine.cpp`: native execution loop tested against the
@@ -257,10 +319,14 @@ Realistic future candidates:
 - `app/market_data/yahoo.py`: yfinance provider implementation.
 - `app/api/routes/market_data.py`: market-data HTTP workflow.
 - `app/api/routes/backtests.py`: backtest HTTP workflow.
+- `app/api/routes/research.py`: research experiment HTTP workflow.
 - `app/schemas/experiment.py`: typed backtest request, result, and trade contracts.
+- `app/research/model_client.py`: local model abstraction and deterministic test client.
+- `app/research/tools.py`: deterministic backtest tool exposed to the workflow.
 - `tests/unit/test_backtesting.py`: deterministic strategy, execution, cost, and
   metric checks.
 - `tests/unit/test_native_backtesting.py`: Python/C++ parity checks.
+- `tests/unit/test_research_workflow.py`: mocked agent workflow and failure tests.
 - `tests/integration/test_api.py`: end-to-end API workflow test.
 
 ### Can Skim
@@ -275,11 +341,13 @@ Realistic future candidates:
 - `scripts/benchmark_backtest.py`: synthetic Python backtester benchmark.
 - `scripts/build_native.py`: direct pybind11 extension build script.
 
-The five most important files after Phase 2 are `app/backtesting/engine.py`,
-`app/backtesting/strategy.py`, `app/backtesting/metrics.py`,
-`app/experiments/service.py`, and `app/models/experiment.py`.
+The seven most important files after Phase 3 are `app/research/workflow.py`,
+`app/research/schemas.py`, `app/research/service.py`, `app/research/model_client.py`,
+`app/backtesting/registry.py`, `app/backtesting/engine.py`, and
+`app/experiments/service.py`.
 
 Mental model: the strategy turns bars into desired positions, the engine turns
 positions into trades and equity, metrics score the equity/trades, the experiment
-service persists the run, and the experiment models define exactly what survives
-in PostgreSQL for future agents to inspect.
+service persists the deterministic backtest, the research workflow wraps that tool
+with structured agent reasoning, and the experiment models define exactly what
+survives in PostgreSQL for future agents to inspect.
