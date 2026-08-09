@@ -75,3 +75,46 @@ def test_research_experiment_flow(client: TestClient) -> None:
     assert payload["backtest_experiment_id"] is not None
     assert payload["model_metadata"]["provider"] == "local"
     assert payload["report"]["performance_metrics"] == payload["metrics"]
+    assert payload["workflow_metadata"]["retrieved_memory_count"] == 0
+
+    memory_response = client.get(f"/experiments/{payload['id']}/memory")
+    assert memory_response.status_code == 200
+    assert len(memory_response.json()) == 1
+
+    trace_response = client.get(f"/research/experiments/{payload['id']}/trace")
+    assert trace_response.status_code == 200
+    assert {event["event_type"] for event in trace_response.json()} == {
+        "memory_retrieved",
+        "lesson_created",
+    }
+
+
+def test_phase4_eval_and_version_api(client: TestClient) -> None:
+    versions_response = client.get("/workflow-versions")
+    assert versions_response.status_code == 200
+    workflow_version_id = versions_response.json()[0]["id"]
+
+    eval_response = client.post(
+        "/evals/run",
+        json={
+            "benchmark_name": "phase4_research_agent_v1",
+            "workflow_version_id": workflow_version_id,
+        },
+    )
+    assert eval_response.status_code == 201
+    eval_payload = eval_response.json()
+    assert eval_payload["aggregate_metrics"]["task_success_rate"] == 1.0
+
+    tasks_response = client.get(f"/evals/{eval_payload['id']}/tasks")
+    assert tasks_response.status_code == 200
+    assert len(tasks_response.json()) == 4
+
+    comparison_response = client.post(
+        "/evals/compare",
+        json={
+            "baseline_eval_run_id": eval_payload["id"],
+            "candidate_eval_run_id": eval_payload["id"],
+        },
+    )
+    assert comparison_response.status_code == 201
+    assert comparison_response.json()["decision"] == "promote"

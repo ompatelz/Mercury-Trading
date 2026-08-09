@@ -78,6 +78,12 @@ class ResearchExperiment(Base):
     model_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     workflow_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_versions.id"), nullable=True
+    )
+    workflow_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_versions.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

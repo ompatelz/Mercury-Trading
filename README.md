@@ -1,353 +1,204 @@
 # Mercury
 
-Mercury is a self-improving autonomous quant research platform. Phase 2 builds the
-market-data and backtesting engine that future autonomous agents will use as a
-deterministic research tool.
+Mercury is an autonomous quant research platform for running reproducible market
+experiments and learning from the results. It combines a FastAPI/PostgreSQL
+backend, deterministic Python-first backtesting, selective C++ acceleration, and a
+controlled agent workflow that records hypotheses, strategies, metrics, critiques,
+research lessons, and eval outcomes.
 
-Phase 3 adds Mercury's first agentic research loop. Agents propose and critique
-experiments, while deterministic Mercury tools still calculate trades, cash, equity,
-and metrics. This phase deliberately excludes long-term RAG memory, prompt mutation,
-Bayesian optimization, bandits, RL, and autonomous agent rewriting.
+## Why Mercury Exists
 
-## What Phase 2 Supports
+Quant research produces many repeated experiments. Most systems preserve metrics
+but lose the reasoning: why a strategy failed, which regime it failed in, whether
+an agent missed a risk rule, and whether a workflow change actually improved
+research quality.
 
-- Fetch historical OHLCV bars through a provider interface.
-- Normalize, validate, store, and query market data.
-- Run a moving-average crossover strategy.
-- Simulate long-only trades with cash, shares, fees, and slippage.
-- Build and test a small pybind11 C++ execution loop against the Python reference.
-- Calculate total return, annualized return, Sharpe, Sortino, volatility, max
-  drawdown, win rate, turnover, costs, and ending portfolio value.
-- Persist experiment metadata, metrics, observability metadata, and trade records.
-- Expose market-data and backtest workflows through typed FastAPI endpoints.
-- Run a typed research workflow from objective to hypothesis, strategy spec,
-  deterministic backtest, risk evaluation, critique, persisted record, and report.
-- Validate agent-selected strategies against an approved registry.
-- Test the full agent workflow with a deterministic local model boundary, so normal
-  CI does not require external LLM credentials.
-- Run deterministic unit and integration tests without live market-data calls.
-- Keep Docker and GitHub Actions ready for CI.
+Mercury treats research as an auditable loop. Agents can propose and critique
+experiments, but deterministic tools calculate trades, metrics, regimes, eval
+scores, and promotion decisions. Phase 4 adds memory and evals so "self-improving"
+means measurable baseline comparison, not unrestricted source rewriting.
 
 ## Architecture
 
-Mercury remains a modular monolith: one deployable application with separated
-HTTP, service, strategy, backtesting, metrics, and persistence boundaries.
+```text
+Market Data
+  -> Normalization / Storage
+  -> Memory Retrieval
+  -> Hypothesis Agent
+  -> Strategy Specification
+  -> Strategy Registry
+  -> Backtesting Engine
+  -> Risk / Evaluation
+  -> Critic
+  -> Lesson Extractor
+  -> Research Memory
 
-```mermaid
-flowchart TD
-    Client["Client or researcher"] --> API["FastAPI routes"]
-    API --> Schemas["Pydantic schemas"]
-    API --> Services["Service layer"]
-    Services --> Provider["MarketDataProvider interface"]
-    Provider --> Yahoo["Yahoo Finance provider"]
-    Services --> Normalize["Polars normalization"]
-    Normalize --> MarketRepo["MarketDataRepository"]
-    MarketRepo --> DB["PostgreSQL"]
-    Services --> Strategy["Strategy interface"]
-    Strategy --> MACross["MovingAverageCrossoverStrategy"]
-    Services --> Engine["Python backtesting engine"]
-    Engine --> Trades["Trade simulation"]
-    Engine --> Metrics["Reusable metrics"]
-    Services --> Experiments["Experiment persistence"]
-    Experiments --> DB
-    API --> Research["Research experiment route"]
-    Research --> Workflow["Typed research workflow"]
-    Workflow --> Registry["Strategy registry"]
-    Workflow --> Engine
-    Workflow --> ResearchDB["Research experiment persistence"]
-    ResearchDB --> DB
+Agent / Workflow Version
+  -> Benchmark Eval
+  -> Candidate Config
+  -> Benchmark Eval
+  -> Compare
+  -> Promote or Reject
 ```
 
-## Phase 3 Research Flow
+Python owns correctness: market-data normalization, strategy validation,
+portfolio accounting, metrics, eval scoring, and persistence. C++ is used only
+where the Python reference has deterministic parity tests, currently the native
+backtesting execution loop through pybind11.
+
+## Current Capabilities
+
+- Fetch, normalize, store, and query OHLCV bars.
+- Run moving-average crossover backtests with costs and slippage.
+- Persist experiments, metrics, trades, and research reports.
+- Build and import the pybind11 native backtesting extension.
+- Run a deterministic agentic research workflow without live LLM credentials.
+- Track agent and workflow versions for research experiments.
+- Extract structured lessons from completed research experiments.
+- Classify simple market regimes from stored price data.
+- Retrieve relevant lessons before new research runs.
+- Run deterministic agent eval benchmarks and store task results.
+- Compare baseline and candidate workflow versions with promotion rules.
+- Expose memory, eval, version, backtest, market-data, and research APIs.
+
+## Self-Improvement
+
+Mercury does not let an agent rewrite arbitrary source code. Improvements are
+represented as versioned configuration or workflow artifacts, then tested against
+a fixed benchmark.
 
 ```text
-research objective
-  -> hypothesis node returns structured hypothesis fields
-  -> strategy node returns an approved strategy specification
-  -> strategy registry validates strategy name and parameters
-  -> backtest tool calls the existing ExperimentService
-  -> Python backtester calculates trades, equity, and metrics
-  -> evaluation node interprets measured metrics
-  -> critic node critiques the experiment design
-  -> research experiment record stores prompts/model/workflow metadata
-  -> structured report separates measured facts from interpretation
+baseline workflow
+  -> benchmark
+  -> candidate workflow
+  -> same benchmark
+  -> metric comparison
+  -> promote/reject decision
 ```
 
-Agents vs workflows: the workflow is the explicit sequence and state transitions;
-the agents are the probabilistic reasoning steps inside that sequence. Structured
-outputs are Pydantic models that force model responses into known fields instead
-of brittle free text. Tool calling means the model chooses a valid experiment, but
-Mercury's deterministic backtest tool calculates what actually happened.
+Promotion currently considers task success, invalid-strategy rejection, and
+latency thresholds. The decision and metric differences are stored in
+`version_comparisons`.
 
-LangGraph is not introduced yet. The Phase 3 graph is linear and easier to audit as
-plain Python typed state. The same concepts are present: `ResearchWorkflowState` is
-state, each node function is a graph node, and the function call order is the edge
-list. LangGraph becomes useful when Mercury needs branching, retries, parallel
-hypotheses, or human review interrupts.
+## Tech Stack
 
-## Backtest Flow
+- Backend: FastAPI, Pydantic, SQLAlchemy.
+- Quant engine: Polars, NumPy, Python reference backtester.
+- Native acceleration: C++, CMake, pybind11.
+- Data: PostgreSQL, Alembic migrations, JSON structured metadata.
+- Agents: deterministic local model boundary for CI-safe research workflows.
+- Memory and evals: structured lessons, deterministic embeddings, benchmark
+  tasks, promotion rules.
+- Quality: pytest, Ruff, mypy, GitHub Actions, Docker.
 
-```text
-fetch data
-  -> normalize and store OHLCV bars
-  -> load bars for symbol and date range
-  -> generate moving-average signals
-  -> shift signals by one bar to avoid look-ahead bias
-  -> execute simulated buy/sell trades at the next bar open
-  -> apply transaction fees and slippage
-  -> mark portfolio value at each close
-  -> calculate metrics
-  -> store experiment result and trades
-  -> return a typed API response
-```
-
-The strategy decides desired exposure. The engine decides execution, portfolio
-accounting, costs, equity, metrics, and persistence. That split is important
-because future agents should be able to swap strategies without changing the
-backtester.
-
-## Technology Choices
-
-- FastAPI provides REST endpoints and OpenAPI documentation.
-- Pydantic defines request and response contracts.
-- SQLAlchemy maps Python models to PostgreSQL tables.
-- Alembic versions schema changes.
-- PostgreSQL stores market bars, experiments, metrics, metadata, and trades.
-- yfinance is the first development market-data provider.
-- Polars handles tabular market-data transformations and signal generation.
-- NumPy supports reusable performance metric calculations.
-- pybind11 exposes selected C++ execution code to Python without replacing the
-  Python-first architecture.
-- pytest validates deterministic behavior.
-- Ruff and mypy keep formatting, linting, and types checked in CI.
-
-## Local Setup
+## Running Mercury
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
 copy .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-For Docker:
+The API runs at `http://localhost:8000`.
+
+Docker:
 
 ```bash
 docker compose up --build
+docker compose down
 ```
 
-The API will be available at `http://localhost:8000`.
-
-## Developer Commands
+## Running Tests
 
 ```bash
 ruff check .
-ruff format .
 ruff format --check .
 mypy app
 python scripts/build_native.py
+python -c "import app.backtesting.native._engine"
 pytest
-python scripts/benchmark_backtest.py --rows 10000
-alembic upgrade head
-uvicorn app.main:app --reload
-docker compose up --build
+alembic heads
 docker build .
 ```
 
-## API Examples
+Migrations need a reachable PostgreSQL database matching `DATABASE_URL`. The
+default local URL expects user `mercury`, password `mercury`, and database
+`mercury`.
 
-Health:
+## API Examples
 
 ```bash
 curl http://localhost:8000/health
-```
 
-Ingest market data:
-
-```bash
-curl -X POST http://localhost:8000/market-data/fetch \
-  -H "Content-Type: application/json" \
-  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d"}'
-```
-
-List stored bars:
-
-```bash
-curl "http://localhost:8000/market-data/MSFT?start=2024-01-01&end=2024-06-01&interval=1d"
-```
-
-Run a backtest:
-
-```bash
-curl -X POST http://localhost:8000/backtests \
-  -H "Content-Type: application/json" \
-  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","interval":"1d","short_window":20,"long_window":50,"initial_capital":10000,"transaction_cost_bps":1,"slippage_bps":2}'
-```
-
-Run a research experiment after deterministic bars already exist:
-
-```bash
 curl -X POST http://localhost:8000/research/experiments \
   -H "Content-Type: application/json" \
   -d '{"objective":"Explore trend-following behavior on MSFT","symbol":"MSFT","start_date":"2024-01-01","end_date":"2024-06-01","interval":"1d"}'
+
+curl -X POST http://localhost:8000/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"MSFT moving average high volatility failure","symbol":"MSFT","top_k":3}'
+
+curl -X POST http://localhost:8000/evals/run \
+  -H "Content-Type: application/json" \
+  -d '{"benchmark_name":"phase4_research_agent_v1"}'
 ```
 
-Read a backtest:
+## Project Structure
 
-```bash
-curl http://localhost:8000/backtests/{id}
-curl http://localhost:8000/backtests/{id}/trades
+```text
+app/
+  api/routes/        HTTP endpoints
+  agents/            agent and workflow version services
+  backtesting/       strategy execution, metrics, native bridge
+  evals/             deterministic benchmark and promotion framework
+  experiments/       backtest persistence service
+  market_data/       providers, normalization, repository
+  memory/            regime classification, embeddings, lesson retrieval
+  models/            SQLAlchemy database models
+  research/          agent workflow and research experiment service
+alembic/             database migrations
+tests/               unit and integration tests
+docs/                architecture and development notes
 ```
 
-## Backtesting Notes
+## Example Research Run
 
-The baseline strategy is moving-average crossover:
+With deterministic bars already stored:
 
-- Calculate fast and slow moving averages from close prices.
-- Target long exposure when the fast average is above the slow average.
-- Target flat exposure when the fast average is below the slow average.
-- Shift the signal by one bar before execution.
-
-The signal shift is Mercury's first look-ahead prevention rule. A signal computed
-from one bar's close is not allowed to earn that same bar's return. The engine
-executes position changes at the following bar open and marks equity at the close.
-
-Transaction costs are charged as basis points of executed notional. Slippage moves
-the execution price against Mercury: buys pay above the open, sells receive below
-the open. Portfolio value is cash plus shares marked to the current close.
-
-## Metrics
-
-- Total return: ending portfolio value divided by starting capital, minus one.
-- Annualized return: total return scaled to 252 trading days.
-- Sharpe ratio: average strategy return per unit of volatility, annualized.
-- Sortino ratio: average strategy return per unit of downside volatility.
-- Maximum drawdown: largest peak-to-trough equity decline.
-- Volatility: annualized standard deviation of strategy returns.
-- Win rate: percentage of closed trades with positive realized PnL.
-- Turnover: executed notional divided by average equity.
-- Transaction costs and slippage costs: total simulated friction paid.
-
-## Testing And CI
-
-Tests use deterministic fixtures and a stubbed market-data provider so CI does not
-depend on Yahoo Finance availability.
-
-GitHub Actions runs on pushes to `main` and pull requests targeting `main`:
-
-1. Install dependencies.
-2. Run Alembic migrations against PostgreSQL.
-3. Run Ruff lint.
-4. Run Ruff format check.
-5. Run mypy.
-6. Configure and build the pybind11 extension with CMake.
-7. Import the native extension.
-8. Run pytest, including quant, parity, agent, API, and persistence tests.
-9. Build the Docker image.
-
-This is CI, not full CD. CI means build, lint, test, and validate every change.
-CD means automatically releasing or deploying verified software. Mercury is
-CI/CD-ready in the sense that Docker artifacts are deployable, but production
-deployment is intentionally deferred to a future phase.
-
-Recommended required branch-protection checks for `main`:
-
-- `Quality, Native, Tests, Integration`
-- `Docker Build`
-
-## C++ Acceleration
-
-Mercury now includes a small native execution loop in
-`app/backtesting/native/engine.cpp`. The Python engine remains the correctness
-reference; the native module is tested through Python/C++ parity tests before it
-can be trusted.
-
-Build it with:
-
-```bash
-python scripts/build_native.py
+```text
+objective: Explore trend-following behavior on MSFT
+hypothesis: MSFT may exhibit short-term trend persistence
+strategy: moving_average_crossover
+backtest: costs, slippage, trades, equity, Sharpe, drawdown
+critic: identifies missing robustness and out-of-sample checks
+memory: stores a lesson tagged by strategy, symbol, regime, and failure reasons
+eval: benchmark tasks score workflow behavior without live API calls
 ```
 
-The repository also includes `CMakeLists.txt` for environments that prefer CMake:
+## Engineering Principles
 
-```bash
-cmake -S . -B build/native
-cmake --build build/native --config Release
-```
+- Reproducible experiments and explicit version metadata.
+- No-lookahead strategy execution.
+- Realistic transaction costs and slippage in backtests.
+- Measurable agent improvement through evals and promotion rules.
+- Structured memory, not raw model transcript storage.
+- CI-safe deterministic tests before live model integrations.
 
-## Future C++ Optimization Candidates
+## Roadmap
 
-Keep expanding the engine Python-first until profiling proves a real bottleneck.
-Future C++ components should continue to be exposed back to Python with pybind11
-so Mercury keeps a simple API while moving hot loops to native code.
+- [x] Backend foundation
+- [x] Market data and backtesting engine
+- [x] Native execution parity path
+- [x] Agentic research workflow
+- [x] Memory, evals, and controlled promotion rules
+- [ ] pgvector-backed semantic search
+- [ ] Portfolio research
+- [ ] Distributed research workers
+- [ ] Live model provider integration behind deterministic eval gates
 
-Realistic future candidates:
+## Contributing
 
-- Event-driven backtest loop for very large datasets.
-- Portfolio accounting and order execution when position logic becomes complex.
-- Large-scale indicator calculation across many symbols.
-- Order-book or high-frequency simulation.
-- Market-data processing where Python dataframe overhead dominates runtime.
-
-## Reading Guide
-
-### Must Read
-
-- `app/main.py`: creates the FastAPI application and includes route modules.
-- `app/research/workflow.py`: explicit Phase 3 research workflow state and nodes.
-- `app/research/service.py`: persists completed research experiments.
-- `app/research/schemas.py`: structured agent, tool, and report contracts.
-- `app/backtesting/registry.py`: approved strategy validation boundary.
-- `app/backtesting/engine.py`: simulates trades, costs, equity, metrics, and
-  observability metadata.
-- `app/backtesting/native/engine.cpp`: native execution loop tested against the
-  Python reference.
-- `app/backtesting/strategy.py`: defines the strategy boundary and moving-average
-  crossover signal generation.
-- `app/backtesting/metrics.py`: reusable objective/evaluation metrics.
-- `app/experiments/service.py`: connects stored data, strategy execution, and
-  experiment persistence.
-
-### Read Next
-
-- `app/models/market_data.py`: OHLCV table shape and uniqueness rules.
-- `app/models/experiment.py`: experiment and trade persistence models.
-- `app/market_data/service.py`: ingestion orchestration.
-- `app/market_data/repository.py`: market-bar upsert and query behavior.
-- `app/market_data/normalization.py`: provider data validation and normalization.
-- `app/market_data/provider.py`: provider interface.
-- `app/market_data/yahoo.py`: yfinance provider implementation.
-- `app/api/routes/market_data.py`: market-data HTTP workflow.
-- `app/api/routes/backtests.py`: backtest HTTP workflow.
-- `app/api/routes/research.py`: research experiment HTTP workflow.
-- `app/schemas/experiment.py`: typed backtest request, result, and trade contracts.
-- `app/research/model_client.py`: local model abstraction and deterministic test client.
-- `app/research/tools.py`: deterministic backtest tool exposed to the workflow.
-- `tests/unit/test_backtesting.py`: deterministic strategy, execution, cost, and
-  metric checks.
-- `tests/unit/test_native_backtesting.py`: Python/C++ parity checks.
-- `tests/unit/test_research_workflow.py`: mocked agent workflow and failure tests.
-- `tests/integration/test_api.py`: end-to-end API workflow test.
-
-### Can Skim
-
-- `app/core/config.py`: environment-driven app settings.
-- `app/db/session.py`: SQLAlchemy engine and session setup.
-- `alembic/versions/*.py`: database migration history.
-- `.github/workflows/ci.yml`: CI pipeline.
-- `CMakeLists.txt`: pybind11 native module build configuration.
-- `Dockerfile` and `docker-compose.yml`: containerized runtime.
-- `Makefile`: local command shortcuts.
-- `scripts/benchmark_backtest.py`: synthetic Python backtester benchmark.
-- `scripts/build_native.py`: direct pybind11 extension build script.
-
-The seven most important files after Phase 3 are `app/research/workflow.py`,
-`app/research/schemas.py`, `app/research/service.py`, `app/research/model_client.py`,
-`app/backtesting/registry.py`, `app/backtesting/engine.py`, and
-`app/experiments/service.py`.
-
-Mental model: the strategy turns bars into desired positions, the engine turns
-positions into trades and equity, metrics score the equity/trades, the experiment
-service persists the deterministic backtest, the research workflow wraps that tool
-with structured agent reasoning, and the experiment models define exactly what
-survives in PostgreSQL for future agents to inspect.
+See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -7,8 +7,32 @@ on:
     branches: [main]
 
 jobs:
-  quality:
-    name: Quality, Native, Tests, Integration
+  python-quality:
+    name: Python Quality and Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: mypy
+        run: mypy app
+      - name: Build native extension for full test suite
+        run: python scripts/build_native.py
+      - name: Native extension import
+        run: python -c "import app.backtesting.native._engine"
+      - name: Unit and integration tests
+        run: pytest
+
+  database:
+    name: PostgreSQL Migrations
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -34,22 +58,30 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      - name: Run migrations
+      - name: Alembic heads
+        run: alembic heads
+      - name: Run migrations from clean DB
         run: alembic upgrade head
-      - name: Ruff lint
-        run: ruff check .
-      - name: Ruff format check
-        run: ruff format --check .
-      - name: mypy
-        run: mypy app
+
+  native-engine:
+    name: C++ Native Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
       - name: CMake configure
         run: cmake -S . -B build/native -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
       - name: C++ pybind11 build
         run: cmake --build build/native --config Release
       - name: Native extension import
         run: python -c "import app.backtesting.native._engine"
-      - name: Unit and integration tests
-        run: pytest
+      - name: Python native parity tests
+        run: pytest tests/unit/test_native_backtesting.py
 
   docker-build:
     name: Docker Build
@@ -59,3 +91,16 @@ jobs:
       - name: Build Docker image
         run: docker build .
 
+  repo-hygiene:
+    name: Repository Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check whitespace
+        run: git diff --check
+      - name: Reject committed env files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "Do not commit .env files"
+            exit 1
+          fi

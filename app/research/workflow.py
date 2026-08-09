@@ -40,14 +40,18 @@ class ResearchWorkflowState:
     report: ResearchReport | None = None
     node_durations_ms: dict[str, float] = field(default_factory=dict)
     model_calls: int = 0
+    retrieved_memory: list[dict[str, Any]] = field(default_factory=list)
 
 
 def run_research_workflow(
     request: ResearchExperimentRequest,
     session: Session,
     model_client: ResearchModelClient,
+    retrieved_memory: list[dict[str, Any]] | None = None,
 ) -> ResearchWorkflowState:
     state = ResearchWorkflowState(request=request)
+    state.retrieved_memory = retrieved_memory or []
+    _run_node(state, "memory_retrieval", lambda: None)
     _run_node(state, "hypothesis", lambda: _hypothesis_node(state, model_client))
     _run_node(state, "strategy_specification", lambda: _strategy_node(state, model_client))
     _run_node(state, "backtest_tool", lambda: _backtest_node(state, session))
