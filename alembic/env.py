@@ -5,9 +5,31 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
-from app.models import Experiment, MarketBar, ResearchExperiment
+from app.models import (
+    AgentVersion,
+    EvalRun,
+    EvalTaskResult,
+    Experiment,
+    MarketBar,
+    ResearchExperiment,
+    ResearchMemoryLesson,
+    ResearchTraceEvent,
+    VersionComparison,
+    WorkflowVersion,
+)
 
-_ = (Experiment, MarketBar, ResearchExperiment)
+_ = (
+    AgentVersion,
+    EvalRun,
+    EvalTaskResult,
+    Experiment,
+    MarketBar,
+    ResearchExperiment,
+    ResearchMemoryLesson,
+    ResearchTraceEvent,
+    VersionComparison,
+    WorkflowVersion,
+)
 
 config = context.config
 if config.config_file_name is not None:

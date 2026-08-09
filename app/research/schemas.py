@@ -107,7 +107,19 @@ class ResearchExperimentResponse(BaseModel):
     report: dict[str, Any]
     model_metadata: dict[str, Any]
     workflow_metadata: dict[str, Any]
+    agent_version_id: UUID | None
+    workflow_version_id: UUID | None
     error_message: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ResearchTraceEventResponse(BaseModel):
+    id: int
+    workflow_run_id: str
+    event_type: str
+    event_payload: dict[str, Any]
     created_at: datetime
 
     model_config = {"from_attributes": True}
