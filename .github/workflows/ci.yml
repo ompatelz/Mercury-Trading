@@ -24,6 +24,10 @@ jobs:
         run: ruff format --check .
       - name: mypy
         run: mypy app
+      - name: Build native extension for full test suite
+        run: python scripts/build_native.py
+      - name: Native extension import
+        run: python -c "import app.backtesting.native._engine"
       - name: Unit and integration tests
         run: pytest
 
