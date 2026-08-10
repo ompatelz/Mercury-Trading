@@ -1,9 +1,9 @@
 # Research Campaigns
 
-A research campaign is the Phase 5 unit of work above a single experiment. It
-stores the objective, constraints, dataset notes, symbols, date range, temporal
-split, budget, generated hypotheses, planned variants, rejected strategies,
-candidate strategies, and final conclusions.
+A research campaign is the unit of work above a single experiment. It stores the
+objective, constraints, dataset notes, symbols, date range, temporal split,
+budget, generated hypotheses, planned variants, rejected strategies, candidate
+strategies, and final conclusions.
 
 The campaign hierarchy is:
 
@@ -29,6 +29,7 @@ Campaign autonomy is deliberately bounded. The service respects
 budget fields. Current deterministic campaign planning does not make live LLM
 calls; it records `llm_calls` as zero.
 
-The final test split is locked during exploration. Phase 5 uses train and
-validation windows for candidate scoring, then evaluates the top final candidates
-on the test split once while generating the campaign report.
+The final test split is locked during exploration. Campaigns use train,
+validation, and pre-test walk-forward windows for candidate scoring, then
+evaluate the top final candidates on the test split once while generating the
+campaign report.

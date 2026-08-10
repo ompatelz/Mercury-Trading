@@ -20,10 +20,12 @@ Train B -> Test B
 Train C -> Test C
 ```
 
-Phase 5 currently stores a deterministic walk-forward summary per campaign
-experiment: window count, average Sharpe, worst drawdown, consistency, and
-train/test degradation placeholder. The window builder and aggregation logic are
-in `app/campaigns/walk_forward.py`.
+Campaign jobs run deterministic walk-forward train/test backtests before the
+locked final test split. Each completed campaign experiment stores the rolling
+window definitions, train/test experiment IDs, window metrics, average
+out-of-sample Sharpe, worst drawdown, return consistency, train/test
+degradation, and parameter stability. The window builder and aggregation logic
+are in `app/campaigns/walk_forward.py`.
 
 Overfitting flags are generated in `app/campaigns/overfitting.py`. Current flags
 include validation degradation, drawdown breach, excessive turnover, low trade

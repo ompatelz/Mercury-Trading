@@ -41,7 +41,7 @@ built by `scripts/build_native.py` locally and by CMake in CI.
 PostgreSQL stores market bars, backtest experiments, trades, research
 experiments, agent versions, workflow versions, memory lessons, trace events,
 eval runs, task results, and version comparisons.
-# Phase 5 Campaign Architecture
+# Campaign Architecture
 
 ```text
                     Mercury
@@ -71,9 +71,9 @@ eval runs, task results, and version comparisons.
                                          Research Report
 ```
 
-Phase 5 keeps the existing Mercury boundary: Python owns orchestration,
-correctness, persistence, and agent control. C++ remains reserved for benchmarked
-hot paths with parity tests.
+Campaign orchestration keeps the existing Mercury boundary: Python owns
+orchestration, correctness, persistence, and agent control. C++ remains reserved
+for benchmarked hot paths with parity tests.
 
 New modules:
 

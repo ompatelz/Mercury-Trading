@@ -1,6 +1,6 @@
 # Portfolio Evaluation
 
-Phase 5 starts portfolio-level research without building a full institutional
+Mercury starts portfolio-level research without building a full institutional
 optimizer. The campaign report ranks individual candidates first, then evaluates
 the top strategies together.
 

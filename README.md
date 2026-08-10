@@ -15,9 +15,9 @@ research quality.
 
 Mercury treats research as an auditable loop. Agents can propose and critique
 experiments, but deterministic tools calculate trades, metrics, regimes, eval
-scores, campaign rankings, and promotion decisions. Phase 5 adds persisted
-research campaigns so Mercury can explore batches of strategy variants without
-turning into an uncontrolled agent swarm.
+scores, campaign rankings, and promotion decisions. Persisted research campaigns
+let Mercury explore batches of strategy variants without turning into an
+uncontrolled agent swarm.
 
 ## Architecture
 
@@ -178,7 +178,7 @@ curl -X POST http://localhost:8000/memory/search \
 
 curl -X POST http://localhost:8000/evals/run \
   -H "Content-Type: application/json" \
-  -d '{"benchmark_name":"phase4_research_agent_v1"}'
+  -d '{"benchmark_name":"research_agent_v1"}'
 
 curl -X POST http://localhost:8000/campaigns \
   -H "Content-Type: application/json" \

@@ -367,6 +367,14 @@ class CampaignService:
         payload: dict[str, Any],
         idempotency_key: str,
     ) -> CampaignJob | None:
+        existing_job = self.session.scalar(
+            select(CampaignJob).where(
+                CampaignJob.campaign_id == campaign.id,
+                CampaignJob.idempotency_key == idempotency_key,
+            )
+        )
+        if existing_job is not None:
+            return None
         job = CampaignJob(
             campaign_id=campaign.id,
             campaign_experiment_id=campaign_experiment.id if campaign_experiment else None,
@@ -409,12 +417,12 @@ class CampaignService:
             validation_metrics=validation_experiment.metrics,
             constraints=campaign.constraints,
         )
-        walk_forward = aggregate_walk_forward(
-            [
-                validation_experiment.metrics
-                for _ in build_walk_forward_windows(campaign.start_date, campaign.end_date)
-            ]
+        walk_forward_windows = self._run_walk_forward_evaluations(
+            campaign=campaign,
+            planned=planned,
+            backtests=backtests,
         )
+        walk_forward = aggregate_walk_forward(walk_forward_windows)
         planned.experiment_id = validation_experiment.id
         planned.status = "completed"
         planned.metrics = validation_experiment.metrics
@@ -423,6 +431,7 @@ class CampaignService:
             "validation_experiment_id": str(validation_experiment.id),
             "train_metrics": train_experiment.metrics,
             "validation_metrics": validation_experiment.metrics,
+            "walk_forward_windows": walk_forward_windows,
             "walk_forward": walk_forward,
             "test_period_locked": campaign.split_definition["test"],
         }
@@ -440,6 +449,50 @@ class CampaignService:
                     "parameters": planned.parameters,
                 },
             ]
+
+    def _run_walk_forward_evaluations(
+        self,
+        campaign: ResearchCampaign,
+        planned: CampaignExperiment,
+        backtests: ExperimentService,
+    ) -> list[dict[str, Any]]:
+        validation_end = date.fromisoformat(campaign.split_definition["validation"]["end"])
+        min_window_days = int(planned.parameters["long_window"]) + 1
+        windows = build_walk_forward_windows(
+            campaign.start_date,
+            validation_end,
+            min_train_days=min_window_days,
+            min_test_days=min_window_days,
+        )
+        results: list[dict[str, Any]] = []
+        for window in windows:
+            train_experiment = backtests.run_backtest(
+                _backtest_request(
+                    campaign,
+                    planned,
+                    window["train_start"],
+                    window["train_end"],
+                )
+            )
+            test_experiment = backtests.run_backtest(
+                _backtest_request(
+                    campaign,
+                    planned,
+                    window["test_start"],
+                    window["test_end"],
+                )
+            )
+            results.append(
+                {
+                    **window,
+                    "train_experiment_id": str(train_experiment.id),
+                    "test_experiment_id": str(test_experiment.id),
+                    "train_metrics": train_experiment.metrics,
+                    "test_metrics": test_experiment.metrics,
+                    "uses_locked_test_split": False,
+                }
+            )
+        return results
 
     def _refresh_campaign_state(self, campaign_id: UUID) -> None:
         campaign = self._require_campaign(campaign_id)

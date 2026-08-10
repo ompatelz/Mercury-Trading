@@ -4,9 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.evals.benchmarks import DEFAULT_BENCHMARK_NAME
+
 
 class EvalRunRequest(BaseModel):
-    benchmark_name: str = "phase4_research_agent_v1"
+    benchmark_name: str = DEFAULT_BENCHMARK_NAME
     workflow_version_id: UUID | None = None
 
 

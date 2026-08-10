@@ -89,7 +89,7 @@ def test_research_experiment_flow(client: TestClient) -> None:
     }
 
 
-def test_phase4_eval_and_version_api(client: TestClient) -> None:
+def test_research_agent_eval_and_version_api(client: TestClient) -> None:
     versions_response = client.get("/workflow-versions")
     assert versions_response.status_code == 200
     workflow_version_id = versions_response.json()[0]["id"]
@@ -97,7 +97,7 @@ def test_phase4_eval_and_version_api(client: TestClient) -> None:
     eval_response = client.post(
         "/evals/run",
         json={
-            "benchmark_name": "phase4_research_agent_v1",
+            "benchmark_name": "research_agent_v1",
             "workflow_version_id": workflow_version_id,
         },
     )
