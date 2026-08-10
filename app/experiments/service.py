@@ -8,6 +8,8 @@ from app.backtesting.engine import run_moving_average_backtest
 from app.market_data.repository import MarketDataRepository
 from app.models.experiment import BacktestTradeRecord, Experiment
 from app.models.market_data import MarketBar
+from app.regimes.engine import REGIME_VERSION, classify_regimes, summarize_transitions
+from app.regimes.performance import performance_by_regime, regime_robustness_score
 from app.schemas.experiment import BacktestRequest
 
 
@@ -35,6 +37,11 @@ class ExperimentService:
             transaction_cost_bps=request.transaction_cost_bps,
             slippage_bps=request.slippage_bps,
         )
+        regime_observations = classify_regimes(bars)
+        regime_performance = performance_by_regime(result.equity_curve, regime_observations)
+        robustness_score, robustness_flags, robustness_components = regime_robustness_score(
+            regime_performance
+        )
         experiment = Experiment(
             strategy_name="moving_average_crossover",
             symbol=request.symbol.upper(),
@@ -51,7 +58,17 @@ class ExperimentService:
             slippage_bps=request.slippage_bps,
             status="completed",
             metrics=result.metrics,
-            run_metadata=result.metadata,
+            run_metadata={
+                **result.metadata,
+                "regime_version": REGIME_VERSION,
+                "regime_performance": regime_performance,
+                "regime_robustness": {
+                    "score": robustness_score,
+                    "flags": robustness_flags,
+                    "components": robustness_components,
+                },
+                "regime_transitions": summarize_transitions(regime_observations),
+            },
             error_message=None,
         )
         self.session.add(experiment)

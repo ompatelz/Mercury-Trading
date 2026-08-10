@@ -5,9 +5,12 @@ from app.api.routes import (
     backtests,
     campaigns,
     evals,
+    evolution,
     health,
     market_data,
     memory,
+    paper_trading,
+    regimes,
     research,
 )
 from app.core.config import get_settings
@@ -21,9 +24,12 @@ def create_app() -> FastAPI:
     app.include_router(backtests.router)
     app.include_router(research.router)
     app.include_router(memory.router)
+    app.include_router(regimes.router)
     app.include_router(evals.router)
     app.include_router(agent_versions.router)
     app.include_router(campaigns.router)
+    app.include_router(evolution.router)
+    app.include_router(paper_trading.router)
     return app
 
 

@@ -47,11 +47,23 @@ Research Campaign
   -> Persisted Job Queue
   -> Worker
   -> Train / Validation Backtests
+  -> Regime Evaluation
   -> Walk-Forward Summary
   -> Overfitting Flags
   -> Strategy Ranking
+  -> Strategy Evolution
+  -> Champion / Challenger
   -> Portfolio Evaluation
   -> Campaign Report
+
+Paper Trading Replay
+  -> Historical Market Event Stream
+  -> Strategy Signal
+  -> Risk Checks
+  -> Market Order
+  -> Paper Broker Fill
+  -> Portfolio Snapshot
+  -> Trace Events
 ```
 
 Python owns correctness: market-data normalization, strategy validation,
@@ -68,7 +80,11 @@ backtesting execution loop through pybind11.
 - Run a deterministic agentic research workflow without live LLM credentials.
 - Track agent and workflow versions for research experiments.
 - Extract structured lessons from completed research experiments.
-- Classify simple market regimes from stored price data.
+- Classify deterministic market regimes from stored price data without
+  look-ahead.
+- Persist timestamped regime features, labels, transitions, and version
+  metadata.
+- Evaluate strategy performance by regime and calculate regime robustness.
 - Retrieve relevant lessons before new research runs.
 - Run deterministic agent eval benchmarks and store task results.
 - Compare baseline and candidate workflow versions with promotion rules.
@@ -84,7 +100,99 @@ backtesting execution loop through pybind11.
 - Rank candidate strategies with explainable component scores.
 - Evaluate basic equal-weight, volatility-adjusted, and simple risk-parity
   portfolios across top candidates.
+- Represent strategies as structured specifications rather than arbitrary
+  generated code.
+- Run bounded evolutionary strategy search with selection, mutation, lineage,
+  diversity metrics, and champion/challenger decisions.
+- Compare memory-conditioned evolution with memory-off evolution.
+- Replay stored historical bars through a simulated paper-trading execution
+  loop.
+- Persist paper sessions, orders, fills, trace events, and final portfolio
+  snapshots.
+- Enforce explicit `PAPER` execution mode; real-money trading is not
+  implemented.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
+
+## Regime-Aware Research
+
+Mercury labels market regimes from quantitative features available at each bar:
+rolling return, moving-average slope, realized volatility, ATR ratio, drawdown,
+trend strength, and autocorrelation. A label at timestamp `t` only uses data at
+or before `t`; future bars cannot change prior labels.
+
+The first regime version classifies:
+
+```text
+trend: bullish | bearish | sideways
+volatility: low | normal | high
+character: trending | mean_reverting
+```
+
+Backtests store per-regime return, Sharpe, Sortino, drawdown, win rate,
+turnover, and trade count. The regime robustness score penalizes weak worst-case
+regimes, high dispersion, insufficient regime coverage, high drawdown, and thin
+trade support.
+
+## Strategy Evolution
+
+Strategies are represented as structured `StrategySpecification` objects:
+
+```text
+strategy_family
+signal_type
+lookback
+entry_conditions
+exit_conditions
+position_sizing
+volatility_filter
+trend_filter
+risk_parameters
+execution_parameters
+```
+
+Evolution is deterministic and metric-driven:
+
+```text
+population
+  -> evaluate
+  -> score fitness
+  -> select
+  -> mutate compatible specifications
+  -> preserve lineage
+  -> compare champion/challenger
+```
+
+Fitness is multi-component. It includes out-of-sample risk-adjusted return,
+Sortino, drawdown control, walk-forward consistency, regime robustness,
+turnover, trade count, overfitting flags, and a simple complexity penalty.
+Mercury prefers simpler strategies with similar robust performance.
+
+## Paper Trading
+
+Mercury supports simulated paper execution over stored historical bars. The
+paper engine replays market bars chronologically, lets the registered strategy
+emit structured signals from prior bars only, applies deterministic risk checks,
+fills market orders through a `PaperBroker`, and updates portfolio state only
+from fill events.
+
+The first broker is intentionally paper-only. There is no live broker adapter and
+no code path that can submit real orders.
+
+## Memory-Guided Search
+
+Evolution can retrieve prior research lessons before mutation. A candidate
+records which memories were retrieved, whether they influenced mutation, and
+whether the resulting candidate improved fitness. Mercury also exposes a
+memory-on versus memory-off comparison runner so memory value is measured rather
+than assumed.
+
+## Validation
+
+Mercury validates research quality through no-lookahead regime tests,
+train/validation/test separation, walk-forward checks, overfitting flags,
+transaction costs, slippage, native Python/C++ parity, migration checks, worker
+tests, and Docker builds. Live regime switching is deliberately out of scope for
+the research foundation.
 
 ## Self-Improvement
 
@@ -155,6 +263,7 @@ mypy app
 python scripts/build_native.py
 python -c "import app.backtesting.native._engine"
 pytest
+pytest tests/unit/test_paper_trading.py tests/integration/test_api.py
 alembic heads
 docker build .
 ```
@@ -193,6 +302,24 @@ python scripts/run_worker.py --max-jobs 4 --worker-name local-worker
 curl http://localhost:8000/campaigns/{campaign_id}/rankings
 curl http://localhost:8000/campaigns/{campaign_id}/portfolios
 curl http://localhost:8000/campaigns/{campaign_id}/report
+
+curl -X POST http://localhost:8000/regimes \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","lookback":20}'
+
+curl http://localhost:8000/strategies/{backtest_id}/regime-performance
+
+curl -X POST http://localhost:8000/evolution-runs \
+  -H "Content-Type: application/json" \
+  -d '{"objective":"Evolve robust moving-average variants for MSFT","symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","generations":2,"population_size":3}'
+
+curl -X POST http://localhost:8000/paper-trading/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","strategy_parameters":{"fast_window":5,"slow_window":20},"execution_mode":"PAPER","initial_cash":10000}'
+
+curl http://localhost:8000/paper-trading/sessions/{session_id}/orders
+curl http://localhost:8000/paper-trading/sessions/{session_id}/trades
+curl http://localhost:8000/paper-trading/sessions/{session_id}/portfolio
 ```
 
 ## Project Structure
@@ -206,6 +333,9 @@ app/
   experiments/       backtest persistence service
   market_data/       providers, normalization, repository
   memory/            regime classification, embeddings, lesson retrieval
+  paper_trading/     replay stream, risk, paper broker, portfolio, session service
+  regimes/           deterministic regime engine and per-regime metrics
+  evolution/         strategy specs, mutation, fitness, lineage
   campaigns/         campaign planning, persisted jobs, optimization, ranking
   models/            SQLAlchemy database models
   research/          agent workflow and research experiment service
@@ -232,12 +362,17 @@ eval: benchmark tasks score workflow behavior without live API calls
 
 - Reproducible experiments and explicit version metadata.
 - No-lookahead strategy execution.
+- No-lookahead regime detection.
 - Realistic transaction costs and slippage in backtests.
 - Measurable agent improvement through evals and promotion rules.
 - Structured memory, not raw model transcript storage.
 - CI-safe deterministic tests before live model integrations.
 - Campaign autonomy is budgeted and finite; no infinite research loops.
 - The final test split is locked during optimization to reduce leakage.
+- Strategies evolve through structured specifications, not arbitrary generated
+  Python.
+- Paper trading is simulated execution only; real broker adapters are out of
+  scope until the paper path is validated.
 
 ## Roadmap
 
@@ -248,6 +383,8 @@ eval: benchmark tasks score workflow behavior without live API calls
 - [x] Memory, evals, and controlled promotion rules
 - [x] Research campaigns, persisted jobs, optimization, walk-forward summaries,
       overfitting flags, ranking, and portfolio evaluation
+- [x] Regime-aware evaluation and bounded strategy evolution
+- [x] Simulated paper-trading replay and event-driven execution
 - [ ] pgvector-backed semantic search
 - [ ] Distributed Redis/Celery workers when DB queue throughput is insufficient
 - [ ] Live model provider integration behind deterministic eval gates
@@ -264,4 +401,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Optimization](docs/optimization.md)
 - [Walk-forward analysis](docs/walk-forward.md)
 - [Portfolio evaluation](docs/portfolio.md)
+- [Regime-aware research](docs/regimes.md)
+- [Strategy specifications](docs/strategy-specification.md)
+- [Evolution](docs/evolution.md)
+- [Fitness](docs/fitness.md)
 - [Testing](docs/testing.md)
+- [Paper trading](docs/paper_trading.md)

@@ -30,6 +30,40 @@ memory retrieval
 This keeps the first agent loop inspectable. Branching, retries, parallel
 hypotheses, and human review can be introduced later if the workflow requires it.
 
+Regime-aware research adds a deterministic layer between market data and
+strategy evaluation:
+
+```text
+market bars
+  -> no-lookahead regime labels
+  -> backtest equity/trades
+  -> per-regime performance
+  -> regime robustness
+  -> fitness / ranking / evolution
+```
+
+Strategy evolution is bounded by structured specifications. Mercury mutates and
+selects validated strategy definitions; it does not store arbitrary generated
+Python as the primary strategy representation.
+
+Paper trading adds a live-style execution path without real broker integration:
+
+```text
+market bars
+  -> historical replay stream
+  -> registered strategy adapter
+  -> signal event
+  -> deterministic risk engine
+  -> order event
+  -> paper broker fill
+  -> portfolio event
+  -> trace persistence
+```
+
+Replay events are processed chronologically. The moving-average adapter makes a
+decision for the current market event using only previously observed bars, then
+the current bar is recorded for future events.
+
 ## Python and C++
 
 Python remains the correctness reference. C++ acceleration is selective and must
@@ -40,7 +74,9 @@ built by `scripts/build_native.py` locally and by CMake in CI.
 
 PostgreSQL stores market bars, backtest experiments, trades, research
 experiments, agent versions, workflow versions, memory lessons, trace events,
-eval runs, task results, and version comparisons.
+eval runs, task results, version comparisons, regime labels, evolution runs, and
+strategy candidates. Paper-trading sessions persist orders, fills, trace events,
+runtime metrics, and the final portfolio snapshot.
 # Campaign Architecture
 
 ```text

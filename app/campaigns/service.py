@@ -14,6 +14,8 @@ from app.campaigns.ranking import score_experiment
 from app.campaigns.schemas import CampaignCreateRequest
 from app.campaigns.splits import build_temporal_split
 from app.campaigns.walk_forward import aggregate_walk_forward, build_walk_forward_windows
+from app.evolution.schemas import EvolutionRunCreateRequest
+from app.evolution.service import EvolutionService
 from app.experiments.service import ExperimentService
 from app.models.campaign import (
     CampaignExperiment,
@@ -252,6 +254,7 @@ class CampaignService:
                         correlation_matrix=correlations,
                     )
                 )
+        evolution_run_id = self._run_evolution_if_requested(campaign, top)
         campaign.candidate_strategies = [
             {
                 "campaign_experiment_id": str(experiment.id),
@@ -272,7 +275,12 @@ class CampaignService:
             for _, experiment in ranked_rows
             if experiment.risk_flags
         ]
-        campaign.final_conclusions = _build_report(campaign, completed, rankings)
+        campaign.final_conclusions = _build_report(
+            campaign,
+            completed,
+            rankings,
+            evolution_run_id=evolution_run_id,
+        )
         campaign.status = "completed" if completed else campaign.status
         self.session.flush()
         self.session.refresh(campaign)
@@ -431,6 +439,12 @@ class CampaignService:
             "validation_experiment_id": str(validation_experiment.id),
             "train_metrics": train_experiment.metrics,
             "validation_metrics": validation_experiment.metrics,
+            "validation_regime_performance": validation_experiment.run_metadata.get(
+                "regime_performance", {}
+            ),
+            "validation_regime_robustness": validation_experiment.run_metadata.get(
+                "regime_robustness", {}
+            ),
             "walk_forward_windows": walk_forward_windows,
             "walk_forward": walk_forward,
             "test_period_locked": campaign.split_definition["test"],
@@ -511,6 +525,41 @@ class CampaignService:
             raise ValueError("campaign not found")
         return campaign
 
+    def _run_evolution_if_requested(
+        self,
+        campaign: ResearchCampaign,
+        top: list[CampaignExperiment],
+    ) -> str | None:
+        if not campaign.constraints.get("enable_evolution"):
+            return None
+        if campaign.final_conclusions.get("evolution_run_id"):
+            return str(campaign.final_conclusions["evolution_run_id"])
+        if not top:
+            return None
+        seed = top[0]
+        initial_population = [
+            {
+                "short_window": int(experiment.parameters["short_window"]),
+                "long_window": int(experiment.parameters["long_window"]),
+            }
+            for experiment in top[:3]
+        ]
+        request = EvolutionRunCreateRequest(
+            objective=f"Campaign evolution: {campaign.objective}",
+            symbol=seed.symbol,
+            start=campaign.start_date,
+            end=campaign.end_date,
+            interval=campaign.interval,
+            initial_population=initial_population,
+            generations=int(campaign.constraints.get("evolution_generations", 1)),
+            population_size=max(2, len(initial_population)),
+            memory_enabled=bool(campaign.constraints.get("memory_conditioned_evolution", False)),
+            transaction_cost_bps=float(campaign.constraints.get("transaction_cost_bps", 1.0)),
+            slippage_bps=float(campaign.constraints.get("slippage_bps", 0.0)),
+        )
+        run = EvolutionService(self.session).create_run(request)
+        return str(run.id)
+
 
 def _backtest_request(
     campaign: ResearchCampaign,
@@ -546,6 +595,8 @@ def _build_report(
     campaign: ResearchCampaign,
     completed: list[CampaignExperiment],
     rankings: list[StrategyRanking],
+    *,
+    evolution_run_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "research_question": campaign.objective,
@@ -577,6 +628,22 @@ def _build_report(
             {flag for experiment in completed for flag in experiment.risk_flags}
         ),
         "portfolio_combinations": "available through /campaigns/{id}/portfolios",
+        "regime_performance": {
+            str(experiment.id): experiment.evaluation.get("validation_metrics", {})
+            | {"regime_performance": experiment.evaluation.get("validation_regime_performance", {})}
+            for experiment in completed
+        },
+        "strategy_evolution": {
+            "valid_campaign_actions": [
+                "new_hypothesis_generation",
+                "parameter_optimization",
+                "strategy_mutation",
+                "strategy_crossover",
+                "portfolio_combination",
+            ],
+            "evolution_run_id": evolution_run_id,
+            "state_machine_owner": "CampaignService",
+        },
         "relevant_previous_memory": "research memory remains available to campaign planners",
         "conclusion": (
             "Campaign completed with explainable rankings. Final candidates were evaluated "
