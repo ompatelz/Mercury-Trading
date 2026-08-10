@@ -1,0 +1,34 @@
+# Research Campaigns
+
+A research campaign is the Phase 5 unit of work above a single experiment. It
+stores the objective, constraints, dataset notes, symbols, date range, temporal
+split, budget, generated hypotheses, planned variants, rejected strategies,
+candidate strategies, and final conclusions.
+
+The campaign hierarchy is:
+
+```text
+Campaign
+  -> Hypotheses
+  -> Strategy families
+  -> Parameter variants
+  -> Campaign jobs
+  -> Backtests
+  -> Evaluation
+  -> Rankings
+  -> Portfolio evaluation
+  -> Report
+```
+
+Campaign logic lives in `app/campaigns/service.py`. API routes in
+`app/api/routes/campaigns.py` only validate HTTP inputs, call services, and
+serialize responses.
+
+Campaign autonomy is deliberately bounded. The service respects
+`max_experiments`, `max_optimization_trials`, `max_llm_calls`, runtime, and cost
+budget fields. Current deterministic campaign planning does not make live LLM
+calls; it records `llm_calls` as zero.
+
+The final test split is locked during exploration. Phase 5 uses train and
+validation windows for candidate scoring, then evaluates the top final candidates
+on the test split once while generating the campaign report.

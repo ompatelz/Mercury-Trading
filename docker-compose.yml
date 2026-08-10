@@ -26,6 +26,16 @@ services:
       db:
         condition: service_healthy
 
+  worker:
+    build: .
+    command: sh -c "alembic upgrade head && python scripts/run_worker.py --worker-name docker-worker"
+    environment:
+      DATABASE_URL: postgresql+psycopg://mercury:mercury@db:5432/mercury
+      YAHOO_AUTO_ADJUST: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres-data:
 

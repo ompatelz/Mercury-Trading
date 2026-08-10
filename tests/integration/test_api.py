@@ -118,3 +118,51 @@ def test_phase4_eval_and_version_api(client: TestClient) -> None:
     )
     assert comparison_response.status_code == 201
     assert comparison_response.json()["decision"] == "promote"
+
+
+def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None:
+    ingest_response = client.post(
+        "/market-data/fetch",
+        json={"symbol": "MSFT", "start": "2024-01-01", "end": "2024-01-21", "interval": "1d"},
+    )
+    assert ingest_response.status_code == 201
+
+    campaign_response = client.post(
+        "/campaigns",
+        json={
+            "objective": "Can medium-term momentum produce robust returns on MSFT?",
+            "symbols": ["MSFT"],
+            "start_date": "2024-01-01",
+            "end_date": "2024-01-21",
+            "constraints": {"minimum_trade_count": 0, "max_drawdown": 0.9},
+            "split_definition": {
+                "train": {"start": "2024-01-01", "end": "2024-01-08"},
+                "validation": {"start": "2024-01-08", "end": "2024-01-15"},
+                "test": {"start": "2024-01-15", "end": "2024-01-21"},
+            },
+            "budget": {"max_experiments": 1, "max_optimization_trials": 1},
+            "parameter_space": {"short_window": [2], "long_window": [3]},
+            "optimization_method": "grid",
+        },
+    )
+    assert campaign_response.status_code == 201
+    campaign = campaign_response.json()
+    assert campaign["status"] == "created"
+    assert len(campaign["generated_hypotheses"]) == 1
+
+    run_response = client.post(f"/campaigns/{campaign['id']}/run", json={})
+    assert run_response.status_code == 200
+    assert run_response.json()[0]["status"] == "queued"
+
+    worker_response = client.post("/jobs/work", json={"worker_name": "api-test", "max_jobs": 1})
+    assert worker_response.status_code == 200
+    assert worker_response.json()[0]["status"] == "succeeded"
+
+    ranking_response = client.get(f"/campaigns/{campaign['id']}/rankings")
+    assert ranking_response.status_code == 200
+    assert ranking_response.json()[0]["rank"] == 1
+
+    report_response = client.get(f"/campaigns/{campaign['id']}/report")
+    assert report_response.status_code == 200
+    assert report_response.json()["hypotheses_tested"] == 1
+    assert report_response.json()["test_results"][0]["test_experiment_id"] is not None

@@ -63,6 +63,38 @@ jobs:
       - name: Run migrations from clean DB
         run: alembic upgrade head
 
+  campaign-worker:
+    name: Campaign Worker Integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mercury_test
+          POSTGRES_USER: mercury
+          POSTGRES_PASSWORD: mercury
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mercury -d mercury_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://mercury:mercury@localhost:5432/mercury_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Worker tests
+        run: pytest tests/unit/test_campaigns.py tests/integration/test_api.py
+
   native-engine:
     name: C++ Native Engine
     runs-on: ubuntu-latest

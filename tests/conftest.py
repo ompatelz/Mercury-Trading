@@ -16,19 +16,20 @@ from app.main import create_app
 
 class StubMarketDataProvider:
     def fetch_bars(self, symbol: str, start: date, end: date, interval: str) -> pl.DataFrame:
-        return sample_raw_bars()
+        return sample_raw_bars(start=start, end=end)
 
 
-def sample_raw_bars() -> pl.DataFrame:
-    closes = [100, 101, 102, 101, 103, 105, 104, 106, 108, 109]
+def sample_raw_bars(start: date = date(2024, 1, 1), end: date = date(2024, 1, 11)) -> pl.DataFrame:
+    days = max(0, (end - start).days)
+    closes = [100 + day + ((day % 4) - 1) for day in range(days)]
     return pl.DataFrame(
         {
-            "Date": [f"2024-01-{day:02d}" for day in range(1, 11)],
+            "Date": [start.fromordinal(start.toordinal() + day).isoformat() for day in range(days)],
             "Open": closes,
             "High": [price + 1 for price in closes],
             "Low": [price - 1 for price in closes],
             "Close": closes,
-            "Volume": [1_000 + day for day in range(10)],
+            "Volume": [1_000 + day for day in range(days)],
         }
     )
 
