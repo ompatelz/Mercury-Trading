@@ -35,9 +35,11 @@ def test_campaign_worker_runs_jobs_and_builds_rankings(db_session: Session) -> N
         )
     )
     jobs = service.run_campaign(campaign.id)
+    duplicate_jobs = service.run_campaign(campaign.id)
     db_session.commit()
 
     assert len(jobs) == 2
+    assert duplicate_jobs == []
 
     processed_one = service.process_next_job("test-worker")
     processed_two = service.process_next_job("test-worker")
@@ -53,6 +55,14 @@ def test_campaign_worker_runs_jobs_and_builds_rankings(db_session: Session) -> N
     assert campaign.final_conclusions["hypotheses_tested"] == 2
     assert campaign.final_conclusions["test_results"]
     assert campaign.final_conclusions["split_definition"]["test"]["start"] == "2024-02-06"
+    experiments = service.list_experiments(campaign.id)
+    walk_forward_windows = experiments[0].evaluation["walk_forward_windows"]
+    assert walk_forward_windows
+    assert all(
+        window["test_end"] <= campaign.final_conclusions["split_definition"]["test"]["start"]
+        for window in walk_forward_windows
+    )
+    assert all(window["uses_locked_test_split"] is False for window in walk_forward_windows)
 
 
 def _seed_bars(session: Session, symbol: str, days: int) -> None:

@@ -3,7 +3,7 @@
 Mercury evals measure whether an agent or workflow version improves research
 behavior. Normal CI uses deterministic benchmark tasks and local scoring.
 
-The default Phase 4 benchmark checks:
+The default research-agent benchmark checks:
 
 - valid strategy generation
 - structured output behavior

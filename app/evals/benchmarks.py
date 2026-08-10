@@ -10,7 +10,7 @@ class BenchmarkTask:
     required_failure: str | None = None
 
 
-DEFAULT_BENCHMARK_NAME = "phase4_research_agent_v1"
+DEFAULT_BENCHMARK_NAME = "research_agent_v1"
 
 DEFAULT_BENCHMARK_TASKS: tuple[BenchmarkTask, ...] = (
     BenchmarkTask(

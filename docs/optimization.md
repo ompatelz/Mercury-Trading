@@ -1,6 +1,6 @@
 # Parameter Search and Optimization
 
-Phase 5 supports three parameter exploration methods:
+Mercury supports three campaign parameter exploration methods:
 
 - `grid`: exhaustive combinations for small controlled spaces.
 - `random`: deterministic seeded sampling for broader spaces.

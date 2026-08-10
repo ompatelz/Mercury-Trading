@@ -1,8 +1,8 @@
 # Workers and Jobs
 
-Mercury Phase 5 uses a PostgreSQL-backed job table instead of Redis/Celery.
-That matches the current modular monolith, keeps CI simple, and makes job state
-auditable before adding distributed queue infrastructure.
+Mercury uses a PostgreSQL-backed job table instead of Redis/Celery for campaign
+execution. That matches the current modular monolith, keeps CI simple, and makes
+job state auditable before adding distributed queue infrastructure.
 
 Job states:
 
