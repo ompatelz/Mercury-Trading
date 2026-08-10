@@ -55,6 +55,15 @@ Research Campaign
   -> Champion / Challenger
   -> Portfolio Evaluation
   -> Campaign Report
+
+Paper Trading Replay
+  -> Historical Market Event Stream
+  -> Strategy Signal
+  -> Risk Checks
+  -> Market Order
+  -> Paper Broker Fill
+  -> Portfolio Snapshot
+  -> Trace Events
 ```
 
 Python owns correctness: market-data normalization, strategy validation,
@@ -96,6 +105,12 @@ backtesting execution loop through pybind11.
 - Run bounded evolutionary strategy search with selection, mutation, lineage,
   diversity metrics, and champion/challenger decisions.
 - Compare memory-conditioned evolution with memory-off evolution.
+- Replay stored historical bars through a simulated paper-trading execution
+  loop.
+- Persist paper sessions, orders, fills, trace events, and final portfolio
+  snapshots.
+- Enforce explicit `PAPER` execution mode; real-money trading is not
+  implemented.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
 
 ## Regime-Aware Research
@@ -151,6 +166,17 @@ Fitness is multi-component. It includes out-of-sample risk-adjusted return,
 Sortino, drawdown control, walk-forward consistency, regime robustness,
 turnover, trade count, overfitting flags, and a simple complexity penalty.
 Mercury prefers simpler strategies with similar robust performance.
+
+## Paper Trading
+
+Mercury supports simulated paper execution over stored historical bars. The
+paper engine replays market bars chronologically, lets the registered strategy
+emit structured signals from prior bars only, applies deterministic risk checks,
+fills market orders through a `PaperBroker`, and updates portfolio state only
+from fill events.
+
+The first broker is intentionally paper-only. There is no live broker adapter and
+no code path that can submit real orders.
 
 ## Memory-Guided Search
 
@@ -237,6 +263,7 @@ mypy app
 python scripts/build_native.py
 python -c "import app.backtesting.native._engine"
 pytest
+pytest tests/unit/test_paper_trading.py tests/integration/test_api.py
 alembic heads
 docker build .
 ```
@@ -285,6 +312,14 @@ curl http://localhost:8000/strategies/{backtest_id}/regime-performance
 curl -X POST http://localhost:8000/evolution-runs \
   -H "Content-Type: application/json" \
   -d '{"objective":"Evolve robust moving-average variants for MSFT","symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","generations":2,"population_size":3}'
+
+curl -X POST http://localhost:8000/paper-trading/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","strategy_parameters":{"fast_window":5,"slow_window":20},"execution_mode":"PAPER","initial_cash":10000}'
+
+curl http://localhost:8000/paper-trading/sessions/{session_id}/orders
+curl http://localhost:8000/paper-trading/sessions/{session_id}/trades
+curl http://localhost:8000/paper-trading/sessions/{session_id}/portfolio
 ```
 
 ## Project Structure
@@ -298,6 +333,7 @@ app/
   experiments/       backtest persistence service
   market_data/       providers, normalization, repository
   memory/            regime classification, embeddings, lesson retrieval
+  paper_trading/     replay stream, risk, paper broker, portfolio, session service
   regimes/           deterministic regime engine and per-regime metrics
   evolution/         strategy specs, mutation, fitness, lineage
   campaigns/         campaign planning, persisted jobs, optimization, ranking
@@ -335,6 +371,8 @@ eval: benchmark tasks score workflow behavior without live API calls
 - The final test split is locked during optimization to reduce leakage.
 - Strategies evolve through structured specifications, not arbitrary generated
   Python.
+- Paper trading is simulated execution only; real broker adapters are out of
+  scope until the paper path is validated.
 
 ## Roadmap
 
@@ -346,6 +384,7 @@ eval: benchmark tasks score workflow behavior without live API calls
 - [x] Research campaigns, persisted jobs, optimization, walk-forward summaries,
       overfitting flags, ranking, and portfolio evaluation
 - [x] Regime-aware evaluation and bounded strategy evolution
+- [x] Simulated paper-trading replay and event-driven execution
 - [ ] pgvector-backed semantic search
 - [ ] Distributed Redis/Celery workers when DB queue throughput is insufficient
 - [ ] Live model provider integration behind deterministic eval gates
@@ -367,3 +406,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Evolution](docs/evolution.md)
 - [Fitness](docs/fitness.md)
 - [Testing](docs/testing.md)
+- [Paper trading](docs/paper_trading.md)

@@ -9,6 +9,7 @@ from app.api.routes import (
     health,
     market_data,
     memory,
+    paper_trading,
     regimes,
     research,
 )
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_versions.router)
     app.include_router(campaigns.router)
     app.include_router(evolution.router)
+    app.include_router(paper_trading.router)
     return app
 
 

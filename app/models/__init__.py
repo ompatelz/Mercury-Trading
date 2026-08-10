@@ -11,6 +11,12 @@ from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
 from app.models.market_data import MarketBar
 from app.models.memory import ResearchMemoryLesson
+from app.models.paper_trading import (
+    PaperFillRecord,
+    PaperOrderRecord,
+    PaperTraceEventRecord,
+    PaperTradingSession,
+)
 from app.models.regime import MarketRegimeLabel
 
 __all__ = [
@@ -24,6 +30,10 @@ __all__ = [
     "Experiment",
     "MarketBar",
     "MarketRegimeLabel",
+    "PaperFillRecord",
+    "PaperOrderRecord",
+    "PaperTraceEventRecord",
+    "PaperTradingSession",
     "PortfolioEvaluation",
     "ResearchCampaign",
     "ResearchExperiment",

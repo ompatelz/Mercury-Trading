@@ -218,3 +218,42 @@ def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None
     assert report_response.json()["hypotheses_tested"] == 1
     assert report_response.json()["test_results"][0]["test_experiment_id"] is not None
     assert "strategy_evolution" in report_response.json()
+
+
+def test_paper_trading_api_replays_market_data_to_portfolio(client: TestClient) -> None:
+    ingest_response = client.post(
+        "/market-data/fetch",
+        json={"symbol": "MSFT", "start": "2024-01-01", "end": "2024-01-12", "interval": "1d"},
+    )
+    assert ingest_response.status_code == 201
+
+    session_response = client.post(
+        "/paper-trading/sessions",
+        json={
+            "symbol": "MSFT",
+            "start": "2024-01-01",
+            "end": "2024-01-12",
+            "interval": "1d",
+            "strategy_parameters": {"fast_window": 2, "slow_window": 3},
+            "initial_cash": 10000,
+            "commission_bps": 1,
+            "slippage_bps": 2,
+        },
+    )
+    assert session_response.status_code == 201
+    paper_session = session_response.json()
+    assert paper_session["status"] == "completed"
+    assert paper_session["execution_mode"] == "PAPER"
+    assert paper_session["metrics"]["market_events"] == 11
+
+    orders_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/orders")
+    assert orders_response.status_code == 200
+    assert all(order["status"] in {"SUBMITTED", "REJECTED"} for order in orders_response.json())
+
+    trades_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/trades")
+    assert trades_response.status_code == 200
+    assert len(trades_response.json()) == paper_session["metrics"]["fills"]
+
+    portfolio_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/portfolio")
+    assert portfolio_response.status_code == 200
+    assert portfolio_response.json()["equity"] == paper_session["metrics"]["ending_equity"]
