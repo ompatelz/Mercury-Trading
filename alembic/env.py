@@ -7,26 +7,36 @@ from app.core.config import get_settings
 from app.db.base import Base
 from app.models import (
     AgentVersion,
+    CampaignExperiment,
+    CampaignJob,
     EvalRun,
     EvalTaskResult,
     Experiment,
     MarketBar,
+    PortfolioEvaluation,
+    ResearchCampaign,
     ResearchExperiment,
     ResearchMemoryLesson,
     ResearchTraceEvent,
+    StrategyRanking,
     VersionComparison,
     WorkflowVersion,
 )
 
 _ = (
     AgentVersion,
+    CampaignExperiment,
+    CampaignJob,
     EvalRun,
     EvalTaskResult,
     Experiment,
     MarketBar,
+    PortfolioEvaluation,
+    ResearchCampaign,
     ResearchExperiment,
     ResearchMemoryLesson,
     ResearchTraceEvent,
+    StrategyRanking,
     VersionComparison,
     WorkflowVersion,
 )

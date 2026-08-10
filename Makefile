@@ -1,4 +1,4 @@
-.PHONY: install lint format format-check typecheck native-build test benchmark migrate run docker-up
+.PHONY: install lint format format-check typecheck native-build test benchmark migrate run worker docker-up
 
 install:
 	pip install -e ".[dev]"
@@ -29,6 +29,9 @@ migrate:
 
 run:
 	uvicorn app.main:app --reload
+
+worker:
+	python scripts/run_worker.py
 
 docker-up:
 	docker compose up --build

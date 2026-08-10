@@ -15,8 +15,9 @@ research quality.
 
 Mercury treats research as an auditable loop. Agents can propose and critique
 experiments, but deterministic tools calculate trades, metrics, regimes, eval
-scores, and promotion decisions. Phase 4 adds memory and evals so "self-improving"
-means measurable baseline comparison, not unrestricted source rewriting.
+scores, campaign rankings, and promotion decisions. Phase 5 adds persisted
+research campaigns so Mercury can explore batches of strategy variants without
+turning into an uncontrolled agent swarm.
 
 ## Architecture
 
@@ -39,6 +40,18 @@ Agent / Workflow Version
   -> Benchmark Eval
   -> Compare
   -> Promote or Reject
+
+Research Campaign
+  -> Temporal Split
+  -> Parameter Search
+  -> Persisted Job Queue
+  -> Worker
+  -> Train / Validation Backtests
+  -> Walk-Forward Summary
+  -> Overfitting Flags
+  -> Strategy Ranking
+  -> Portfolio Evaluation
+  -> Campaign Report
 ```
 
 Python owns correctness: market-data normalization, strategy validation,
@@ -59,6 +72,18 @@ backtesting execution loop through pybind11.
 - Retrieve relevant lessons before new research runs.
 - Run deterministic agent eval benchmarks and store task results.
 - Compare baseline and candidate workflow versions with promotion rules.
+- Create research campaigns with objectives, constraints, universes, budgets,
+  temporal splits, hypotheses, planned variants, and final conclusions.
+- Queue campaign experiments as persisted background jobs with attempts,
+  runtime, retry, failure, and cancellation state.
+- Run grid, random, and deterministic Bayesian-like parameter exploration.
+- Enforce train/validation/test split definitions and keep the test period locked
+  during parameter exploration.
+- Aggregate walk-forward robustness summaries.
+- Generate explicit overfitting/risk flags.
+- Rank candidate strategies with explainable component scores.
+- Evaluate basic equal-weight, volatility-adjusted, and simple risk-parity
+  portfolios across top candidates.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
 
 ## Self-Improvement
@@ -89,6 +114,8 @@ latency thresholds. The decision and metric differences are stored in
 - Agents: deterministic local model boundary for CI-safe research workflows.
 - Memory and evals: structured lessons, deterministic embeddings, benchmark
   tasks, promotion rules.
+- Campaigns: persisted PostgreSQL job queue, deterministic campaign
+  orchestration, temporal splits, ranking, portfolio evaluation.
 - Quality: pytest, Ruff, mypy, GitHub Actions, Docker.
 
 ## Running Mercury
@@ -104,12 +131,20 @@ uvicorn app.main:app --reload
 
 The API runs at `http://localhost:8000`.
 
+Worker:
+
+```bash
+python scripts/run_worker.py --worker-name local-worker
+```
+
 Docker:
 
 ```bash
 docker compose up --build
 docker compose down
 ```
+
+Docker Compose starts PostgreSQL, the API, and a campaign worker.
 
 ## Running Tests
 
@@ -144,6 +179,20 @@ curl -X POST http://localhost:8000/memory/search \
 curl -X POST http://localhost:8000/evals/run \
   -H "Content-Type: application/json" \
   -d '{"benchmark_name":"phase4_research_agent_v1"}'
+
+curl -X POST http://localhost:8000/campaigns \
+  -H "Content-Type: application/json" \
+  -d '{"objective":"Can medium-term momentum produce robust returns on MSFT?","symbols":["MSFT"],"start_date":"2024-01-01","end_date":"2024-06-01","budget":{"max_experiments":4,"max_optimization_trials":4},"parameter_space":{"short_window":[5,10],"long_window":[20,50]},"optimization_method":"grid"}'
+
+curl -X POST http://localhost:8000/campaigns/{campaign_id}/run \
+  -H "Content-Type: application/json" \
+  -d '{"batch_size":4}'
+
+python scripts/run_worker.py --max-jobs 4 --worker-name local-worker
+
+curl http://localhost:8000/campaigns/{campaign_id}/rankings
+curl http://localhost:8000/campaigns/{campaign_id}/portfolios
+curl http://localhost:8000/campaigns/{campaign_id}/report
 ```
 
 ## Project Structure
@@ -157,6 +206,7 @@ app/
   experiments/       backtest persistence service
   market_data/       providers, normalization, repository
   memory/            regime classification, embeddings, lesson retrieval
+  campaigns/         campaign planning, persisted jobs, optimization, ranking
   models/            SQLAlchemy database models
   research/          agent workflow and research experiment service
 alembic/             database migrations
@@ -186,6 +236,8 @@ eval: benchmark tasks score workflow behavior without live API calls
 - Measurable agent improvement through evals and promotion rules.
 - Structured memory, not raw model transcript storage.
 - CI-safe deterministic tests before live model integrations.
+- Campaign autonomy is budgeted and finite; no infinite research loops.
+- The final test split is locked during optimization to reduce leakage.
 
 ## Roadmap
 
@@ -194,11 +246,22 @@ eval: benchmark tasks score workflow behavior without live API calls
 - [x] Native execution parity path
 - [x] Agentic research workflow
 - [x] Memory, evals, and controlled promotion rules
+- [x] Research campaigns, persisted jobs, optimization, walk-forward summaries,
+      overfitting flags, ranking, and portfolio evaluation
 - [ ] pgvector-backed semantic search
-- [ ] Portfolio research
-- [ ] Distributed research workers
+- [ ] Distributed Redis/Celery workers when DB queue throughput is insufficient
 - [ ] Live model provider integration behind deterministic eval gates
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Technical Docs
+
+- [Architecture](docs/architecture.md)
+- [Campaigns](docs/campaigns.md)
+- [Workers](docs/workers.md)
+- [Optimization](docs/optimization.md)
+- [Walk-forward analysis](docs/walk-forward.md)
+- [Portfolio evaluation](docs/portfolio.md)
+- [Testing](docs/testing.md)
