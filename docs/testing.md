@@ -31,3 +31,17 @@ hygiene.
 
 Normal CI must not require paid external LLM calls. Campaign and eval tests use
 deterministic local behavior.
+
+Regime and evolution tests cover:
+
+- deterministic classification
+- synthetic bullish/bearish regimes
+- no future leakage
+- regime-version persistence
+- transition summaries
+- per-regime metrics and robustness flags
+- strategy specification validation
+- bounded mutation and compatible crossover
+- memory-influenced mutation provenance
+- fitness and champion/challenger rules
+- persisted evolution lineage and reports

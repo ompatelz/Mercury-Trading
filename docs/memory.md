@@ -20,6 +20,10 @@ Market regime is derived from stored price bars using deterministic rules for
 direction, volatility, and trend consistency. The current embedding is a
 deterministic hashed vector so CI does not depend on external model calls.
 
+Evolution can retrieve these lessons before mutation. The resulting candidate
+stores memory IDs and changed fields so Mercury can later evaluate whether the
+retrieved lesson actually improved search quality.
+
 Retrieval combines filters such as symbol, strategy family, regime, and failure
 type with cosine similarity. Results include source experiment IDs so memory use
 is traceable.
