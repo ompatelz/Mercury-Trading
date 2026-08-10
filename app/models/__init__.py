@@ -7,9 +7,11 @@ from app.models.campaign import (
     StrategyRanking,
 )
 from app.models.eval import EvalRun, EvalTaskResult
+from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
 from app.models.market_data import MarketBar
 from app.models.memory import ResearchMemoryLesson
+from app.models.regime import MarketRegimeLabel
 
 __all__ = [
     "AgentVersion",
@@ -18,13 +20,16 @@ __all__ = [
     "CampaignJob",
     "EvalRun",
     "EvalTaskResult",
+    "EvolutionRun",
     "Experiment",
     "MarketBar",
+    "MarketRegimeLabel",
     "PortfolioEvaluation",
     "ResearchCampaign",
     "ResearchExperiment",
     "ResearchMemoryLesson",
     "ResearchTraceEvent",
+    "StrategyCandidate",
     "StrategyRanking",
     "VersionComparison",
     "WorkflowVersion",
