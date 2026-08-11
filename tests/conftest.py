@@ -8,10 +8,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies import get_market_data_provider
+from app.api.dependencies import get_live_paper_trading_service, get_market_data_provider
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import create_app
+from app.market_data.live import StaticLiveMarketDataProvider
+from app.paper_trading.live_service import LivePaperTradingService
 
 
 class StubMarketDataProvider:
@@ -56,6 +58,16 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_market_data_provider] = lambda: StubMarketDataProvider()
+    live_session_factory = sessionmaker(
+        bind=db_session.bind,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+    app.dependency_overrides[get_live_paper_trading_service] = lambda: LivePaperTradingService(
+        live_session_factory,
+        StaticLiveMarketDataProvider([]),
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
