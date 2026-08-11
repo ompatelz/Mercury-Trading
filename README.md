@@ -64,6 +64,15 @@ Paper Trading Replay
   -> Paper Broker Fill
   -> Portfolio Snapshot
   -> Trace Events
+
+Live Paper Trading
+  -> Live Market Feed
+  -> Normalized Market Events
+  -> Warmed Strategy Runner
+  -> Signals
+  -> Risk Checks
+  -> Paper Broker Fill
+  -> Portfolio / Monitoring / WebSocket Updates
 ```
 
 Python owns correctness: market-data normalization, strategy validation,
@@ -109,6 +118,12 @@ backtesting execution loop through pybind11.
   loop.
 - Persist paper sessions, orders, fills, trace events, and final portfolio
   snapshots.
+- Consume normalized live market bars through a provider abstraction.
+- Run bounded or continuous live paper-trading sessions with historical warm-up,
+  lifecycle state, reconnect attempts, market-session awareness, latency
+  metrics, and component health.
+- Expose live session commands, metrics, portfolio state, orders, and
+  WebSocket updates under `/live`.
 - Enforce explicit `PAPER` execution mode; real-money trading is not
   implemented.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
@@ -177,6 +192,18 @@ from fill events.
 
 The first broker is intentionally paper-only. There is no live broker adapter and
 no code path that can submit real orders.
+
+## Live Paper Trading
+
+Mercury can run the same paper-only strategy/risk/broker/portfolio pipeline from
+a live market-data provider. The first real adapter polls Yahoo Finance for
+recent intraday bars and normalizes them before execution. Tests and CI use a
+static fake live feed and never depend on an external market-data API.
+
+Live sessions support optional historical warm-up from stored bars before the
+stream starts. Runtime state tracks feed lifecycle, latest market event, signal,
+order, portfolio snapshot, PnL, drawdown, rejected orders, processing latency,
+errors, and component health. Real-money execution remains unavailable.
 
 ## Memory-Guided Search
 
@@ -320,6 +347,16 @@ curl -X POST http://localhost:8000/paper-trading/sessions \
 curl http://localhost:8000/paper-trading/sessions/{session_id}/orders
 curl http://localhost:8000/paper-trading/sessions/{session_id}/trades
 curl http://localhost:8000/paper-trading/sessions/{session_id}/portfolio
+
+curl -X POST http://localhost:8000/live/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"MSFT","interval":"1m","strategy_parameters":{"fast_window":5,"slow_window":20},"execution_mode":"PAPER","warmup_start":"2024-01-01","warmup_end":"2024-02-01","initial_cash":10000}'
+
+curl http://localhost:8000/live/sessions/{session_id}
+curl http://localhost:8000/live/sessions/{session_id}/metrics
+curl http://localhost:8000/live/sessions/{session_id}/portfolio
+curl http://localhost:8000/live/sessions/{session_id}/orders
+curl -X POST http://localhost:8000/live/sessions/{session_id}/stop
 ```
 
 ## Project Structure
@@ -333,7 +370,7 @@ app/
   experiments/       backtest persistence service
   market_data/       providers, normalization, repository
   memory/            regime classification, embeddings, lesson retrieval
-  paper_trading/     replay stream, risk, paper broker, portfolio, session service
+  paper_trading/     replay/live runners, risk, paper broker, portfolio, monitoring
   regimes/           deterministic regime engine and per-regime metrics
   evolution/         strategy specs, mutation, fitness, lineage
   campaigns/         campaign planning, persisted jobs, optimization, ranking
@@ -385,6 +422,7 @@ eval: benchmark tasks score workflow behavior without live API calls
       overfitting flags, ranking, and portfolio evaluation
 - [x] Regime-aware evaluation and bounded strategy evolution
 - [x] Simulated paper-trading replay and event-driven execution
+- [x] Live market-data ingestion and monitored live paper trading
 - [ ] pgvector-backed semantic search
 - [ ] Distributed Redis/Celery workers when DB queue throughput is insufficient
 - [ ] Live model provider integration behind deterministic eval gates
@@ -407,3 +445,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Fitness](docs/fitness.md)
 - [Testing](docs/testing.md)
 - [Paper trading](docs/paper_trading.md)
+- [Live execution](docs/live_execution.md)

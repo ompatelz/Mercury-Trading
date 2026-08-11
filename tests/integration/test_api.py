@@ -1,4 +1,11 @@
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.api.dependencies import get_live_paper_trading_service
+from app.market_data.live import StaticLiveMarketDataProvider, live_bar_from_mapping
+from app.paper_trading.live_service import LivePaperTradingService
 
 
 def test_health_endpoint(client: TestClient) -> None:
@@ -257,3 +264,75 @@ def test_paper_trading_api_replays_market_data_to_portfolio(client: TestClient) 
     portfolio_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/portfolio")
     assert portfolio_response.status_code == 200
     assert portfolio_response.json()["equity"] == paper_session["metrics"]["ending_equity"]
+
+
+def test_live_paper_trading_api_runs_bounded_fake_feed(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    ingest_response = client.post(
+        "/market-data/fetch",
+        json={"symbol": "MSFT", "start": "2024-01-01", "end": "2024-01-04", "interval": "1m"},
+    )
+    assert ingest_response.status_code == 201
+    factory = sessionmaker(
+        bind=db_session.bind,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+    live_provider = StaticLiveMarketDataProvider(
+        [
+            live_bar_from_mapping(
+                {
+                    "Datetime": datetime(2024, 1, 2, 14, 30 + index, tzinfo=UTC),
+                    "Open": close,
+                    "High": close + 1,
+                    "Low": close - 1,
+                    "Close": close,
+                    "Volume": 1_000 + index,
+                },
+                symbol="MSFT",
+                interval="1m",
+                source="test",
+            )
+            for index, close in enumerate([103, 104, 98])
+        ]
+    )
+    client.app.dependency_overrides[get_live_paper_trading_service] = lambda: (
+        LivePaperTradingService(factory, live_provider)
+    )
+
+    session_response = client.post(
+        "/live/sessions",
+        json={
+            "symbol": "MSFT",
+            "interval": "1m",
+            "strategy_parameters": {"fast_window": 2, "slow_window": 3},
+            "warmup_start": "2024-01-01",
+            "warmup_end": "2024-01-04",
+            "max_events": 3,
+            "initial_cash": 10000,
+        },
+    )
+
+    assert session_response.status_code == 201
+    live_session = session_response.json()
+    assert live_session["execution_mode"] == "PAPER"
+    assert live_session["status"] == "STOPPED"
+
+    metrics_response = client.get(f"/live/sessions/{live_session['id']}/metrics")
+    assert metrics_response.status_code == 200
+    assert metrics_response.json()["market_events_received"] == 3
+    assert "processing_latency" in metrics_response.json()
+
+    portfolio_response = client.get(f"/live/sessions/{live_session['id']}/portfolio")
+    assert portfolio_response.status_code == 200
+    assert portfolio_response.json()["equity"] > 0
+
+    orders_response = client.get(f"/live/sessions/{live_session['id']}/orders")
+    assert orders_response.status_code == 200
+
+    health_response = client.get("/live/health")
+    assert health_response.status_code == 200
+    assert {item["component"] for item in health_response.json()} >= {"Market Data", "Database"}

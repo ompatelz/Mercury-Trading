@@ -64,6 +64,23 @@ Replay events are processed chronologically. The moving-average adapter makes a
 decision for the current market event using only previously observed bars, then
 the current bar is recorded for future events.
 
+Live paper trading extends that same contract to streaming providers:
+
+```text
+live provider
+  -> normalized live bar
+  -> warmed strategy runner
+  -> signal event
+  -> deterministic risk engine
+  -> paper broker fill
+  -> portfolio event
+  -> metrics / health / websocket update
+```
+
+Provider-specific formats stop at `LiveMarketDataProvider`. The execution path
+still writes paper sessions, orders, fills, trace events, metrics, and portfolio
+snapshots. No live broker implementation exists.
+
 ## Python and C++
 
 Python remains the correctness reference. C++ acceleration is selective and must
@@ -76,7 +93,7 @@ PostgreSQL stores market bars, backtest experiments, trades, research
 experiments, agent versions, workflow versions, memory lessons, trace events,
 eval runs, task results, version comparisons, regime labels, evolution runs, and
 strategy candidates. Paper-trading sessions persist orders, fills, trace events,
-runtime metrics, and the final portfolio snapshot.
+runtime metrics, and the latest or final portfolio snapshot.
 # Campaign Architecture
 
 ```text

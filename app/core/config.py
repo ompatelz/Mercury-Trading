@@ -13,6 +13,13 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     yahoo_auto_adjust: bool = Field(default=False, validation_alias="YAHOO_AUTO_ADJUST")
+    live_market_data_provider: str = Field(
+        default="yahoo", validation_alias="LIVE_MARKET_DATA_PROVIDER"
+    )
+    live_market_data_poll_seconds: float = Field(
+        default=30.0, validation_alias="LIVE_MARKET_DATA_POLL_SECONDS"
+    )
+    execution_mode: str = Field(default="PAPER", validation_alias="EXECUTION_MODE")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

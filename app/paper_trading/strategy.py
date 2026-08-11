@@ -49,6 +49,10 @@ class MovingAverageSignalStrategy:
     def observe(self, event: MarketEvent) -> None:
         self._history.append(event)
 
+    @property
+    def history_size(self) -> int:
+        return len(self._history)
+
     def _signal(
         self,
         event: MarketEvent,

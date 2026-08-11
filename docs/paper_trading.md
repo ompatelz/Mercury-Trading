@@ -1,7 +1,8 @@
 # Paper Trading
 
-Mercury's paper-trading layer simulates live-style execution over stored
-historical bars. It is deterministic, synchronous, and paper-only.
+Mercury's paper-trading layer simulates execution without a real broker. It can
+run synchronously over stored historical bars or continuously from normalized
+live market bars. Both modes are paper-only.
 
 ## Event Flow
 
@@ -61,6 +62,10 @@ curl http://localhost:8000/paper-trading/sessions/{session_id}/portfolio
 ```
 
 Market data must be ingested before creating a paper-trading session.
+
+Live paper trading is documented separately in [Live execution](live_execution.md).
+It reuses the same strategy, risk, paper broker, and portfolio objects but reads
+from `LiveMarketDataProvider` instead of `HistoricalReplayStream`.
 
 ## Persistence
 
