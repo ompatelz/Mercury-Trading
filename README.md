@@ -124,9 +124,41 @@ backtesting execution loop through pybind11.
   metrics, and component health.
 - Expose live session commands, metrics, portfolio state, orders, and
   WebSocket updates under `/live`.
+- Expose a research dashboard API and React dashboard for experiments,
+  campaigns, regime performance, strategy lineage, and paper-trading monitors.
 - Enforce explicit `PAPER` execution mode; real-money trading is not
   implemented.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
+
+## Research Dashboard
+
+Mercury includes a Vite React/TypeScript dashboard under `frontend/`. It is an
+observability interface for the research loop rather than a trading terminal:
+
+```text
+Research Campaign
+  -> Hypotheses
+  -> Strategies
+  -> Backtests
+  -> Evaluation
+  -> Evolution
+  -> Champion / Challenger
+```
+
+The dashboard reads query-oriented backend endpoints under `/dashboard`:
+
+- `GET /dashboard/overview`
+- `GET /dashboard/experiments`
+- `GET /dashboard/experiments/{experiment_id}`
+- `GET /dashboard/campaigns/{campaign_id}`
+- `GET /dashboard/strategies/{strategy_id}/lineage`
+- `GET /dashboard/strategies/compare`
+- `GET /dashboard/paper-trading/sessions/{session_id}`
+
+These endpoints aggregate persisted Mercury state from experiments, campaign
+jobs, strategy candidates, memory lessons, and paper-trading sessions. The
+frontend does not duplicate promotion, regime, or risk logic; it renders the
+metrics and explanations already persisted by the backend.
 
 ## Regime-Aware Research
 
@@ -281,6 +313,16 @@ docker compose down
 
 Docker Compose starts PostgreSQL, the API, and a campaign worker.
 
+Dashboard:
+
+```bash
+pnpm --dir frontend install
+pnpm --dir frontend dev
+```
+
+The Vite dev server proxies `/dashboard` to `http://127.0.0.1:8000`. If the API
+runs elsewhere, set `VITE_API_BASE_URL` before starting the frontend.
+
 ## Running Tests
 
 ```bash
@@ -293,6 +335,12 @@ pytest
 pytest tests/unit/test_paper_trading.py tests/integration/test_api.py
 alembic heads
 docker build .
+pnpm --dir frontend lint
+pnpm --dir frontend typecheck
+pnpm --dir frontend test
+pnpm --dir frontend build
+pnpm --dir frontend exec playwright install chromium
+pnpm --dir frontend e2e
 ```
 
 Migrations need a reachable PostgreSQL database matching `DATABASE_URL`. The
@@ -366,6 +414,7 @@ app/
   api/routes/        HTTP endpoints
   agents/            agent and workflow version services
   backtesting/       strategy execution, metrics, native bridge
+  dashboard/         dashboard aggregation and observability schemas
   evals/             deterministic benchmark and promotion framework
   experiments/       backtest persistence service
   market_data/       providers, normalization, repository
@@ -379,6 +428,7 @@ app/
 alembic/             database migrations
 tests/               unit and integration tests
 docs/                architecture and development notes
+frontend/            React/TypeScript research dashboard
 ```
 
 ## Example Research Run

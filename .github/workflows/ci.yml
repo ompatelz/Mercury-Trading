@@ -33,6 +33,33 @@ jobs:
       - name: Deterministic paper trading replay
         run: pytest tests/unit/test_paper_trading.py tests/integration/test_api.py
 
+  frontend:
+    name: Research Dashboard Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+      - name: Install dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Lint
+        run: pnpm --dir frontend lint
+      - name: Type check
+        run: pnpm --dir frontend typecheck
+      - name: Unit tests
+        run: pnpm --dir frontend test
+      - name: Build
+        run: pnpm --dir frontend build
+      - name: Install Playwright browser
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: pnpm --dir frontend e2e
+
   database:
     name: PostgreSQL Migrations
     runs-on: ubuntu-latest
