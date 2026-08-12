@@ -4,6 +4,7 @@ from app.api.routes import (
     agent_versions,
     backtests,
     campaigns,
+    dashboard,
     evals,
     evolution,
     health,
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(evals.router)
     app.include_router(agent_versions.router)
     app.include_router(campaigns.router)
+    app.include_router(dashboard.router)
     app.include_router(evolution.router)
     app.include_router(paper_trading.router)
     return app

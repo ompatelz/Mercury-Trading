@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "frontend:install": "pnpm --dir frontend install",
+    "frontend:lint": "pnpm --dir frontend lint",
+    "frontend:typecheck": "pnpm --dir frontend typecheck",
+    "frontend:test": "pnpm --dir frontend test",
+    "frontend:e2e": "pnpm --dir frontend e2e",
+    "frontend:build": "pnpm --dir frontend build"
+  }
+}
