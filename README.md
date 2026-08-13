@@ -84,7 +84,8 @@ backtesting execution loop through pybind11.
 
 - Fetch, normalize, store, and query OHLCV bars.
 - Run moving-average crossover backtests with costs and slippage.
-- Persist experiments, metrics, trades, and research reports.
+- Persist experiments, metrics, trades, reproducibility snapshots, and research
+  artifacts.
 - Build and import the pybind11 native backtesting extension.
 - Run a deterministic agentic research workflow without live LLM credentials.
 - Track agent and workflow versions for research experiments.
@@ -125,7 +126,12 @@ backtesting execution loop through pybind11.
 - Expose live session commands, metrics, portfolio state, orders, and
   WebSocket updates under `/live`.
 - Expose a research dashboard API and React dashboard for experiments,
-  campaigns, regime performance, strategy lineage, and paper-trading monitors.
+  reproducible reports, campaigns, regime performance, strategy lineage, and
+  paper-trading monitors.
+- Export experiment and campaign reports as structured JSON or Markdown, with
+  measured results separated from interpretation.
+- Reproduce stored experiments from captured configuration and current market
+  data fingerprints, then compare metrics with explicit tolerances.
 - Enforce explicit `PAPER` execution mode; real-money trading is not
   implemented.
 - Expose memory, eval, version, backtest, market-data, and research APIs.
@@ -154,11 +160,13 @@ The dashboard reads query-oriented backend endpoints under `/dashboard`:
 - `GET /dashboard/strategies/{strategy_id}/lineage`
 - `GET /dashboard/strategies/compare`
 - `GET /dashboard/paper-trading/sessions/{session_id}`
+- `GET /experiments/{experiment_id}/report`
+- `POST /experiments/{experiment_id}/reproduce`
 
 These endpoints aggregate persisted Mercury state from experiments, campaign
 jobs, strategy candidates, memory lessons, and paper-trading sessions. The
-frontend does not duplicate promotion, regime, or risk logic; it renders the
-metrics and explanations already persisted by the backend.
+frontend does not duplicate promotion, regime, report-generation, or risk logic;
+it renders the metrics and explanations already persisted by the backend.
 
 ## Regime-Aware Research
 
@@ -378,6 +386,11 @@ curl http://localhost:8000/campaigns/{campaign_id}/rankings
 curl http://localhost:8000/campaigns/{campaign_id}/portfolios
 curl http://localhost:8000/campaigns/{campaign_id}/report
 
+curl http://localhost:8000/experiments/{experiment_id}/report
+curl http://localhost:8000/experiments/{experiment_id}/report?format=markdown
+curl -X POST http://localhost:8000/experiments/{experiment_id}/reproduce
+python scripts/reproduce_experiment.py {experiment_id}
+
 curl -X POST http://localhost:8000/regimes \
   -H "Content-Type: application/json" \
   -d '{"symbol":"MSFT","start":"2024-01-01","end":"2024-06-01","lookback":20}'
@@ -423,6 +436,7 @@ app/
   regimes/           deterministic regime engine and per-regime metrics
   evolution/         strategy specs, mutation, fitness, lineage
   campaigns/         campaign planning, persisted jobs, optimization, ranking
+  research_artifacts/ structured report generation and reproduction checks
   models/            SQLAlchemy database models
   research/          agent workflow and research experiment service
 alembic/             database migrations
@@ -492,6 +506,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Regime-aware research](docs/regimes.md)
 - [Strategy specifications](docs/strategy-specification.md)
 - [Evolution](docs/evolution.md)
+- [Research artifacts](docs/research_artifacts.md)
 - [Fitness](docs/fitness.md)
 - [Testing](docs/testing.md)
 - [Paper trading](docs/paper_trading.md)

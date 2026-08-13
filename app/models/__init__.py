@@ -18,6 +18,7 @@ from app.models.paper_trading import (
     PaperTradingSession,
 )
 from app.models.regime import MarketRegimeLabel
+from app.models.research_artifact import ResearchArtifact
 
 __all__ = [
     "AgentVersion",
@@ -36,6 +37,7 @@ __all__ = [
     "PaperTradingSession",
     "PortfolioEvaluation",
     "ResearchCampaign",
+    "ResearchArtifact",
     "ResearchExperiment",
     "ResearchMemoryLesson",
     "ResearchTraceEvent",

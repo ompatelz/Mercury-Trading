@@ -14,6 +14,7 @@ from app.api.routes import (
     paper_trading,
     regimes,
     research,
+    research_artifacts,
 )
 from app.core.config import get_settings
 
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(market_data.router)
     app.include_router(backtests.router)
     app.include_router(research.router)
+    app.include_router(research_artifacts.router)
     app.include_router(memory.router)
     app.include_router(regimes.router)
     app.include_router(evals.router)

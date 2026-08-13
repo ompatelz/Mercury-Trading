@@ -61,6 +61,21 @@ def test_ingest_and_backtest_flow(client: TestClient) -> None:
     assert regime_response.status_code == 200
     assert regime_response.json()["regime_version"] == "regime-v1"
 
+    report_response = client.get(f"/experiments/{experiment['id']}/report")
+    assert report_response.status_code == 200
+    report = report_response.json()
+    assert report["experiment_id"] == experiment["id"]
+    assert report["measured_results"]["sharpe_ratio"] == experiment["metrics"]["sharpe_ratio"]
+    assert report["export_metadata"]["formats"] == ["json", "markdown"]
+
+    markdown_response = client.get(f"/experiments/{experiment['id']}/report?format=markdown")
+    assert markdown_response.status_code == 200
+    assert "## Measured Result" in markdown_response.text
+
+    reproduce_response = client.post(f"/experiments/{experiment['id']}/reproduce")
+    assert reproduce_response.status_code == 200
+    assert reproduce_response.json()["match"] is True
+
 
 def test_regime_and_evolution_api_flow(client: TestClient) -> None:
     ingest_response = client.post(
@@ -225,6 +240,7 @@ def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None
     assert report_response.json()["hypotheses_tested"] == 1
     assert report_response.json()["test_results"][0]["test_experiment_id"] is not None
     assert "strategy_evolution" in report_response.json()
+    assert report_response.json()["artifact"]["artifact_type"] == "campaign"
 
 
 def test_paper_trading_api_replays_market_data_to_portfolio(client: TestClient) -> None:

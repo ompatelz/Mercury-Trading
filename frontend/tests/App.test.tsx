@@ -37,6 +37,25 @@ const detail = {
   trades: [{ timestamp: "2024-01-02T00:00:00Z", side: "BUY", price: 100, quantity: 10 }]
 };
 
+const report = {
+  id: "artifact-1",
+  artifact_type: "experiment",
+  experiment_id: "exp-1",
+  campaign_id: null,
+  title: "Experiment Report",
+  hypothesis: "trend",
+  measured_results: { sharpe_ratio: 1.2, number_of_trades: 1 },
+  interpretation: { performance: "Sharpe was measured as 1.2" },
+  reproducibility_metadata: { configuration_fingerprint: "abc" },
+  charts: {
+    equity_curve: [{ timestamp: "2024-01-02T00:00:00Z", equity: 10000 }],
+    drawdown: [{ timestamp: "2024-01-02T00:00:00Z", drawdown: 0 }],
+    return_distribution: [{ bucket: "0% to 1%", count: 1 }]
+  },
+  export_metadata: { formats: ["json", "markdown"] },
+  markdown_report: "# Experiment Report"
+};
+
 describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -44,6 +63,7 @@ describe("App", () => {
       vi.fn((url: string) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
         if (url.includes("/dashboard/experiments/exp-1")) return ok(detail);
+        if (url.includes("/experiments/exp-1/report")) return ok(report);
         if (url.includes("/dashboard/experiments")) {
           return ok({ items: [experiment], total: 1, limit: 50, offset: 0 });
         }
@@ -63,6 +83,8 @@ describe("App", () => {
     expect(await screen.findByText("Experiments Run")).toBeInTheDocument();
     expect(await screen.findByText("moving_average_crossover")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Performance")).toBeInTheDocument());
+    expect(await screen.findByText("Measured Result")).toBeInTheDocument();
+    expect(screen.getByText("Equity Curve")).toBeInTheDocument();
     expect(screen.getByText("Regime Performance")).toBeInTheDocument();
     expect(screen.getByTestId("regime-weaknesses")).toHaveTextContent(
       "No persisted weakness flags"

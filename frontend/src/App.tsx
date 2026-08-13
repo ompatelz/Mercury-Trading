@@ -2,9 +2,11 @@ import {
   Activity,
   BarChart3,
   Brain,
+  FileJson,
   FlaskConical,
   GitBranch,
   LineChart,
+  Repeat2,
   RefreshCw,
   Scale,
   Search
@@ -24,10 +26,12 @@ import {
 import {
   getCampaign,
   getExperiment,
+  getExperimentReport,
   getLineage,
   getOverview,
   getPaperSession,
-  listExperiments
+  listExperiments,
+  reproduceExperiment
 } from "./api";
 import type {
   CampaignDashboard,
@@ -36,7 +40,9 @@ import type {
   ExperimentDetail,
   ExperimentListItem,
   Lineage,
-  PaperSessionDashboard
+  PaperSessionDashboard,
+  ReproductionResult,
+  ResearchArtifact
 } from "./types";
 
 type LoadState<T> =
@@ -53,6 +59,10 @@ export function App() {
   });
   const [selectedExperimentId, setSelectedExperimentId] = useState<string | null>(null);
   const [experiment, setExperiment] = useState<LoadState<ExperimentDetail>>({ status: "idle" });
+  const [report, setReport] = useState<LoadState<ResearchArtifact>>({ status: "idle" });
+  const [reproduction, setReproduction] = useState<LoadState<ReproductionResult>>({
+    status: "idle"
+  });
   const [lineage, setLineage] = useState<LoadState<Lineage>>({ status: "idle" });
   const [campaign, setCampaign] = useState<LoadState<CampaignDashboard>>({ status: "idle" });
   const [paper, setPaper] = useState<LoadState<PaperSessionDashboard>>({ status: "idle" });
@@ -69,15 +79,23 @@ export function App() {
   useEffect(() => {
     if (selectedExperimentId) {
       setExperiment({ status: "loading" });
+      setReport({ status: "loading" });
+      setReproduction({ status: "idle" });
       getExperiment(selectedExperimentId)
         .then((data) => setExperiment({ status: "ready", data }))
         .catch((error: Error) => setExperiment({ status: "error", error: error.message }));
+      getExperimentReport(selectedExperimentId)
+        .then((data) => setReport({ status: "ready", data }))
+        .catch((error: Error) => setReport({ status: "error", error: error.message }));
     }
   }, [selectedExperimentId]);
 
   const selectedExperiment = experiment.status === "ready" ? experiment.data : null;
   const regimeRows = useMemo(() => regimeChartRows(selectedExperiment), [selectedExperiment]);
   const tradeRows = useMemo(() => tradeChartRows(selectedExperiment), [selectedExperiment]);
+  const equityRows = useMemo(() => reportChartRows(report, "equity_curve"), [report]);
+  const drawdownRows = useMemo(() => reportChartRows(report, "drawdown"), [report]);
+  const returnRows = useMemo(() => returnDistributionRows(report), [report]);
 
   async function refreshOverview() {
     setOverview({ status: "loading" });
@@ -130,6 +148,19 @@ export function App() {
       setPaper({ status: "ready", data: await getPaperSession(ids.paper.trim()) });
     } catch (error) {
       setPaper({ status: "error", error: (error as Error).message });
+    }
+  }
+
+  async function runReproduction() {
+    if (!selectedExperimentId) return;
+    setReproduction({ status: "loading" });
+    try {
+      setReproduction({
+        status: "ready",
+        data: await reproduceExperiment(selectedExperimentId)
+      });
+    } catch (error) {
+      setReproduction({ status: "error", error: (error as Error).message });
     }
   }
 
@@ -287,6 +318,89 @@ export function App() {
           ) : (
             <StateBlock state={experiment.status} error={experiment.error} label="experiment detail" />
           )}
+        </Panel>
+
+        <Panel title="Research Report" icon={<FileJson size={17} />}>
+          {report.status === "ready" ? (
+            <>
+              <div className="reportActions">
+                <a href={`/experiments/${report.data.experiment_id}/report?format=json`}>JSON</a>
+                <a href={`/experiments/${report.data.experiment_id}/report?format=markdown`}>
+                  Markdown
+                </a>
+                <button onClick={() => void runReproduction()}>
+                  <Repeat2 size={16} />
+                  Reproduce
+                </button>
+              </div>
+              <div className="split">
+                <MetricColumn title="Measured Result" value={report.data.measured_results} />
+                <MetricColumn title="Interpretation" value={report.data.interpretation} />
+              </div>
+              <MetricColumn
+                title="Reproducibility"
+                value={report.data.reproducibility_metadata}
+              />
+              {reproduction.status === "ready" ? (
+                <div className={`reproduction ${reproduction.data.match ? "match" : "mismatch"}`}>
+                  <strong>{reproduction.data.status}</strong>
+                  <span>
+                    {reproduction.data.blocking_differences.length
+                      ? reproduction.data.blocking_differences.join(", ")
+                      : "metrics and fingerprints match"}
+                  </span>
+                </div>
+              ) : (
+                <StateBlock
+                  state={reproduction.status}
+                  error={reproduction.error}
+                  label="reproduction"
+                />
+              )}
+            </>
+          ) : (
+            <StateBlock state={report.status} error={report.error} label="research report" />
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid two">
+        <Panel title="Research Charts" icon={<LineChart size={17} />}>
+          <div className="chartGrid">
+            <ChartFrame title="Equity Curve">
+              <ResponsiveContainer width="100%" height={220}>
+                <RechartsLineChart data={equityRows}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line dataKey="equity" stroke="#1f7a8c" dot={false} />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </ChartFrame>
+            <ChartFrame title="Drawdown">
+              <ResponsiveContainer width="100%" height={220}>
+                <RechartsLineChart data={drawdownRows}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" />
+                  <YAxis />
+                  <Tooltip />
+                  <Line dataKey="drawdown" stroke="#c44536" dot={false} />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </ChartFrame>
+            <ChartFrame title="Return Distribution">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={returnRows}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="bucket" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#3d5a80" />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartFrame>
+          </div>
         </Panel>
 
         <Panel title="Memory & Learning" icon={<Brain size={17} />}>
@@ -479,6 +593,23 @@ function tradeChartRows(detail: ExperimentDetail | null) {
     price: trade.price,
     side: trade.side
   }));
+}
+
+function reportChartRows(
+  state: LoadState<ResearchArtifact>,
+  key: "equity_curve" | "drawdown"
+) {
+  if (state.status !== "ready") return [];
+  const rows = state.data.charts[key] ?? [];
+  return rows.map((row, index) => ({
+    ...row,
+    label: String(index + 1)
+  }));
+}
+
+function returnDistributionRows(state: LoadState<ResearchArtifact>) {
+  if (state.status !== "ready") return [];
+  return state.data.charts.return_distribution ?? [];
 }
 
 function formatMetric(value: DashboardMetric["value"], unit?: string | null) {

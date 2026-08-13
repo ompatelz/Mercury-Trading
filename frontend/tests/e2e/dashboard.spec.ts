@@ -62,6 +62,28 @@ test("opens an experiment and shows metrics, chart areas, regime state, and line
       }
     });
   });
+  await page.route("**/experiments/exp-1/report**", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "artifact-1",
+        artifact_type: "experiment",
+        experiment_id: "exp-1",
+        campaign_id: null,
+        title: "Experiment Report",
+        hypothesis: "trend",
+        measured_results: { sharpe_ratio: 1.2, number_of_trades: 1 },
+        interpretation: { performance: "Sharpe was measured as 1.2" },
+        reproducibility_metadata: { configuration_fingerprint: "abc" },
+        charts: {
+          equity_curve: [{ timestamp: "2024-01-02T00:00:00Z", equity: 10000 }],
+          drawdown: [{ timestamp: "2024-01-02T00:00:00Z", drawdown: 0 }],
+          return_distribution: [{ bucket: "0% to 1%", count: 1 }]
+        },
+        export_metadata: { formats: ["json", "markdown"] },
+        markdown_report: "# Experiment Report"
+      }
+    });
+  });
   await page.route("**/dashboard/strategies/strategy-1/lineage", async (route) => {
     await route.fulfill({
       json: {
@@ -88,6 +110,8 @@ test("opens an experiment and shows metrics, chart areas, regime state, and line
   await page.goto("/");
   await expect(page.getByText("moving_average_crossover")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Measured Result", exact: true })).toBeVisible();
+  await expect(page.getByText("Equity Curve")).toBeVisible();
   await expect(page.getByText("Regime Performance")).toBeVisible();
   await expect(page.getByTestId("regime-weaknesses")).toContainText(
     "No persisted weakness flags"
