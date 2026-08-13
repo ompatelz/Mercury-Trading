@@ -16,6 +16,7 @@ from app.campaigns.schemas import (
 )
 from app.campaigns.service import CampaignService
 from app.db.session import get_session
+from app.research_artifacts.service import ResearchArtifactService, artifact_to_dict
 
 router = APIRouter(tags=["campaigns"])
 
@@ -128,11 +129,12 @@ def get_campaign_report(
 ) -> dict[str, object]:
     try:
         report = CampaignService(session).get_report(campaign_id)
+        artifact = ResearchArtifactService(session).campaign_artifact(campaign_id)
         session.commit()
     except ValueError as exc:
         session.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return report
+    return {**report, "artifact": artifact_to_dict(artifact)}
 
 
 @router.get("/jobs/{job_id}", response_model=CampaignJobResponse)

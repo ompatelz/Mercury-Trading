@@ -69,6 +69,42 @@ export type ExperimentDetail = {
   trades: TradePoint[];
 };
 
+export type ResearchArtifact = {
+  id: string;
+  artifact_type: string;
+  experiment_id?: string | null;
+  campaign_id?: string | null;
+  title: string;
+  hypothesis?: string | null;
+  measured_results: Record<string, unknown>;
+  interpretation: Record<string, unknown>;
+  reproducibility_metadata: Record<string, unknown>;
+  charts: {
+    equity_curve?: Array<{ timestamp: string; equity: number }>;
+    drawdown?: Array<{ timestamp: string; drawdown: number }>;
+    return_distribution?: Array<{ bucket: string; count: number }>;
+  };
+  export_metadata: Record<string, unknown>;
+  markdown_report: string;
+};
+
+export type ReproductionResult = {
+  experiment_id: string;
+  status: string;
+  match: boolean;
+  blocking_differences: string[];
+  metric_comparisons: Record<
+    string,
+    {
+      original: number;
+      reproduced?: number | null;
+      difference?: number | null;
+      tolerance: number;
+      status: string;
+    }
+  >;
+};
+
 export type LineageNode = {
   id: string;
   parent_strategy_ids: string[];

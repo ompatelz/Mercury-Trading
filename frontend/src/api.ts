@@ -5,6 +5,8 @@ import type {
   ExperimentList,
   Lineage,
   PaperSessionDashboard,
+  ReproductionResult,
+  ResearchArtifact,
   StrategyComparison
 } from "./types";
 
@@ -12,6 +14,14 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
+
+async function postJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, { method: "POST" });
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
@@ -28,6 +38,14 @@ export function listExperiments(query: URLSearchParams): Promise<ExperimentList>
 
 export function getExperiment(id: string): Promise<ExperimentDetail> {
   return getJson(`/dashboard/experiments/${id}`);
+}
+
+export function getExperimentReport(id: string): Promise<ResearchArtifact> {
+  return getJson(`/experiments/${id}/report`);
+}
+
+export function reproduceExperiment(id: string): Promise<ReproductionResult> {
+  return postJson(`/experiments/${id}/reproduce`);
 }
 
 export function getLineage(strategyId: string): Promise<Lineage> {

@@ -30,6 +30,10 @@ button {
   cursor: pointer;
 }
 
+button svg {
+  vertical-align: text-bottom;
+}
+
 button:hover {
   border-color: #1f7a8c;
 }
@@ -296,6 +300,44 @@ tbody tr {
   background: #eef4f5;
   padding: 4px 8px;
   font-size: 0.78rem;
+}
+
+.reportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.reportActions a,
+.reportActions button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #b8c6cc;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #172026;
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.reproduction {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border: 1px solid #d7e0e3;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.reproduction.match {
+  border-color: #6ea27a;
+}
+
+.reproduction.mismatch {
+  border-color: #c44536;
 }
 
 .lineage {
