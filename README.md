@@ -102,7 +102,9 @@ backtesting execution loop through pybind11.
   temporal splits, hypotheses, planned variants, and final conclusions.
 - Queue campaign experiments as persisted background jobs with attempts,
   runtime, retry, failure, and cancellation state.
-- Run grid, random, and deterministic Bayesian-like parameter exploration.
+- Create persisted optimization studies with typed parameter spaces, grid/random/
+  optional-Optuna Bayesian proposal methods, durable trial records, and explicit
+  validation/test-set isolation.
 - Enforce train/validation/test split definitions and keep the test period locked
   during parameter exploration.
 - Aggregate walk-forward robustness summaries.

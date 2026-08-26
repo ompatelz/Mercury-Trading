@@ -96,6 +96,70 @@ class CampaignExperiment(Base):
     campaign: Mapped[ResearchCampaign] = relationship(back_populates="experiments")
 
 
+class OptimizationStudy(Base):
+    """Auditable optimization envelope backed by one durable research campaign."""
+
+    __tablename__ = "optimization_studies"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("research_campaigns.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    strategy_family: Mapped[str] = mapped_column(String(100), nullable=False)
+    parameter_space: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    objective_definition: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    dataset: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    validation_configuration: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    trial_budget: Mapped[int] = mapped_column(Integer, nullable=False)
+    search_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    random_seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    optimizer_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    trials: Mapped[list["OptimizationTrial"]] = relationship(
+        back_populates="study", cascade="all, delete-orphan"
+    )
+
+
+class OptimizationTrial(Base):
+    __tablename__ = "optimization_trials"
+    __table_args__ = (
+        UniqueConstraint("study_id", "parameter_hash", name="uq_optimization_trials_parameters"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    study_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("optimization_studies.id", ondelete="CASCADE"), nullable=False
+    )
+    campaign_experiment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("campaign_experiments.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("experiments.id", ondelete="SET NULL"), nullable=True
+    )
+    trial_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    parameter_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    rejection_reasons: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    objective_components: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    sensitivity: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    engine: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    engine_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    study: Mapped[OptimizationStudy] = relationship(back_populates="trials")
+
+
 class CampaignJob(Base):
     __tablename__ = "campaign_jobs"
     __table_args__ = (

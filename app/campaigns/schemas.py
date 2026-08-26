@@ -25,6 +25,7 @@ class CampaignCreateRequest(BaseModel):
     )
     parameter_space: dict[str, Any] | None = None
     optimization_method: str = "grid"
+    optimization_seed: int = 17
     stop_conditions: dict[str, Any] = Field(
         default_factory=lambda: {
             "no_improvement_rounds": 2,
@@ -49,6 +50,67 @@ class CampaignRunRequest(BaseModel):
 class WorkerRunRequest(BaseModel):
     worker_name: str = "api-worker"
     max_jobs: int = Field(default=1, ge=1, le=100)
+
+
+class OptimizationStudyCreateRequest(BaseModel):
+    objective: str = Field(min_length=10)
+    symbols: list[str] = Field(min_length=1)
+    start_date: date
+    end_date: date
+    parameter_space: dict[str, Any]
+    search_method: str = "grid"
+    trial_budget: int = Field(default=12, ge=1, le=500)
+    interval: str = "1d"
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    split_definition: dict[str, dict[str, str]] | None = None
+    random_seed: int = 17
+
+    @model_validator(mode="after")
+    def validate_study(self) -> "OptimizationStudyCreateRequest":
+        if self.start_date >= self.end_date:
+            raise ValueError("start_date must be before end_date")
+        if self.search_method not in {"grid", "random", "bayesian"}:
+            raise ValueError("search_method must be grid, random, or bayesian")
+        return self
+
+
+class OptimizationTrialResponse(BaseModel):
+    id: UUID
+    campaign_experiment_id: UUID
+    experiment_id: UUID | None
+    trial_number: int
+    parameters: dict[str, Any]
+    status: str
+    rejection_reasons: list[str]
+    objective_components: dict[str, Any]
+    score: float | None
+    sensitivity: dict[str, Any]
+    engine: str | None
+    engine_version: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class OptimizationStudyResponse(BaseModel):
+    id: UUID
+    campaign_id: UUID
+    strategy_family: str
+    parameter_space: dict[str, Any]
+    objective_definition: dict[str, Any]
+    dataset: dict[str, Any]
+    validation_configuration: dict[str, Any]
+    trial_budget: int
+    search_method: str
+    random_seed: int
+    optimizer_metadata: dict[str, Any]
+    status: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class CampaignResponse(BaseModel):
