@@ -21,7 +21,13 @@ from app.dashboard.schemas import (
     StrategyLineageResponse,
     TradeChartPoint,
 )
-from app.models.campaign import CampaignExperiment, CampaignJob, ResearchCampaign, StrategyRanking
+from app.models.campaign import (
+    CampaignExperiment,
+    CampaignJob,
+    PortfolioEvaluation,
+    ResearchCampaign,
+    StrategyRanking,
+)
 from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
 from app.models.memory import ResearchMemoryLesson
@@ -220,6 +226,13 @@ class DashboardService:
                 .order_by(CampaignJob.created_at)
             )
         )
+        portfolios = list(
+            self.session.scalars(
+                select(PortfolioEvaluation)
+                .where(PortfolioEvaluation.campaign_id == campaign_id)
+                .order_by(PortfolioEvaluation.created_at.desc())
+            )
+        )
         top_candidates = [
             {
                 "campaign_experiment_id": str(item.campaign_experiment_id),
@@ -254,6 +267,19 @@ class DashboardService:
                     "risk_flags": item.risk_flags,
                 }
                 for item in experiments
+            ],
+            portfolios=[
+                {
+                    "id": str(item.id),
+                    "definition": item.definition,
+                    "metrics": item.metrics,
+                    "compatibility": item.compatibility,
+                    "rebalance_history": item.rebalance_history,
+                    "incremental_benefit": item.incremental_benefit,
+                    "ranking": item.ranking,
+                    "rejection_reasons": item.rejection_reasons,
+                }
+                for item in portfolios
             ],
         )
 

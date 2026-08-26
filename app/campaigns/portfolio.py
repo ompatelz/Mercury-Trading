@@ -1,65 +1,82 @@
-import math
-from typing import Any
+"""Campaign adapter for the reusable portfolio engine."""
 
-from app.models.campaign import CampaignExperiment
+from dataclasses import dataclass
+from typing import Any, cast
+
+from app.models.campaign import CampaignExperiment, ResearchCampaign
+from app.portfolio.engine import (
+    PortfolioDefinition,
+    PortfolioResult,
+    StrategySeries,
+    construct_portfolio,
+)
+
+
+@dataclass(frozen=True)
+class CampaignPortfolioResult:
+    weights: dict[str, float]
+    metrics: dict[str, Any]
+    definition: dict[str, Any]
+    compatibility: dict[str, Any]
+    rebalance_history: list[dict[str, Any]]
+    incremental_benefit: dict[str, dict[str, float]]
+    rejection_reasons: list[str]
+    ranking: dict[str, Any]
 
 
 def evaluate_portfolio(
-    experiments: list[CampaignExperiment], weighting_method: str
-) -> tuple[dict[str, float], dict[str, float], float, dict[str, Any]]:
-    if not experiments:
-        raise ValueError("portfolio evaluation requires at least one strategy")
-    ids = [str(experiment.id) for experiment in experiments]
-    weights = _weights(experiments, weighting_method)
-    returns = [float(experiment.metrics.get("total_return", 0.0)) for experiment in experiments]
-    volatility = [
-        max(float(experiment.metrics.get("volatility", 0.0)), 0.0001) for experiment in experiments
+    campaign: ResearchCampaign, experiments: list[CampaignExperiment], weighting_method: str
+) -> CampaignPortfolioResult:
+    strategies = [
+        StrategySeries(
+            strategy_id=str(item.id),
+            version=str(item.experiment_id),
+            family=item.strategy_family,
+            symbol=item.symbol,
+            returns=list(item.evaluation.get("validation_return_series", [])),
+            regime_performance=dict(item.evaluation.get("validation_regime_performance", {})),
+        )
+        for item in experiments
     ]
-    portfolio_return = sum(weights[ids[index]] * returns[index] for index in range(len(ids)))
-    portfolio_vol = math.sqrt(
-        sum((weights[ids[index]] * volatility[index]) ** 2 for index in range(len(ids)))
+    definition = PortfolioDefinition(
+        strategy_ids=[item.strategy_id for item in strategies],
+        strategy_versions={item.strategy_id: item.version for item in strategies},
+        allocation_method=cast(Any, weighting_method),
+        dynamic_method=cast(Any, campaign.constraints.get("portfolio_dynamic_method", "static")),
+        rebalance_frequency=cast(
+            Any, campaign.constraints.get("portfolio_rebalance_frequency", "monthly")
+        ),
+        lookback_periods=int(campaign.constraints.get("portfolio_lookback_periods", 20)),
+        constraints=dict(campaign.constraints.get("portfolio_constraints", {})),
+        universe=campaign.symbols,
+        validation_period=campaign.split_definition["validation"],
+        transaction_cost_bps=float(campaign.constraints.get("transaction_cost_bps", 1.0)),
     )
-    metrics = {
-        "portfolio_return": round(portfolio_return, 6),
-        "portfolio_volatility": round(portfolio_vol, 6),
-        "portfolio_sharpe": round(portfolio_return / portfolio_vol, 6) if portfolio_vol else 0.0,
-        "strategy_count": float(len(experiments)),
+    result: PortfolioResult = construct_portfolio(definition, strategies)
+    return CampaignPortfolioResult(
+        weights=result.weights,
+        metrics=result.metrics | {"return_series": result.return_series},
+        definition=definition.as_dict(),
+        compatibility=result.compatibility,
+        rebalance_history=result.rebalance_history,
+        incremental_benefit=result.incremental_benefit,
+        rejection_reasons=result.rejection_reasons,
+        ranking=_ranking(result),
+    )
+
+
+def _ranking(result: PortfolioResult) -> dict[str, Any]:
+    metrics = result.metrics
+    components = {
+        "oos_sharpe": float(metrics.get("sharpe_ratio", 0.0)),
+        "drawdown": -abs(float(metrics.get("max_drawdown", 0.0))),
+        "diversification": float(metrics.get("diversification_ratio", 0.0)),
+        "turnover": -float(metrics.get("turnover", 0.0)),
+        "cost": -float(metrics.get("transaction_cost", 0.0)),
     }
-    average_vol = sum(volatility) / len(volatility)
-    diversification_benefit = round(max(0.0, average_vol - portfolio_vol), 6)
-    return weights, metrics, diversification_benefit, _correlation_matrix(experiments)
-
-
-def _weights(experiments: list[CampaignExperiment], method: str) -> dict[str, float]:
-    ids = [str(experiment.id) for experiment in experiments]
-    if method == "equal_weight":
-        weight = round(1.0 / len(ids), 6)
-        return {strategy_id: weight for strategy_id in ids}
-    inverse_vol = [
-        1.0 / max(float(experiment.metrics.get("volatility", 0.0)), 0.0001)
-        for experiment in experiments
-    ]
-    total = sum(inverse_vol)
-    if method in {"volatility_adjusted", "risk_parity"}:
-        return {ids[index]: round(inverse_vol[index] / total, 6) for index in range(len(ids))}
-    raise ValueError("weighting method must be equal_weight, volatility_adjusted, or risk_parity")
-
-
-def _correlation_matrix(experiments: list[CampaignExperiment]) -> dict[str, Any]:
-    ids = [str(experiment.id) for experiment in experiments]
-    matrix: dict[str, Any] = {}
-    for left in experiments:
-        row: list[float] = []
-        for right in experiments:
-            same_family = left.strategy_family == right.strategy_family
-            same_symbol = left.symbol == right.symbol
-            if left.id == right.id:
-                correlation = 1.0
-            elif same_family and same_symbol:
-                correlation = 0.75
-            else:
-                correlation = 0.35
-            row.append(correlation)
-        matrix[str(left.id)] = row
-    matrix["columns"] = ids
-    return matrix
+    return {
+        "score": round(sum(components.values()), 8),
+        "components": components,
+        "explanation": "OOS streams, diversification, costs, and turnover were scored.",
+        "promotion_decision": "reject" if result.rejection_reasons else "challenger",
+    }

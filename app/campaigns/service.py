@@ -308,17 +308,28 @@ class CampaignService:
             delete(PortfolioEvaluation).where(PortfolioEvaluation.campaign_id == campaign.id)
         )
         if top:
-            for method in ["equal_weight", "volatility_adjusted", "risk_parity"]:
-                weights, metrics, benefit, correlations = evaluate_portfolio(top, method)
+            for method in ["equal_weight", "inverse_volatility", "risk_parity"]:
+                result = evaluate_portfolio(campaign, top, method)
                 self.session.add(
                     PortfolioEvaluation(
                         campaign_id=campaign.id,
                         strategy_experiment_ids=[str(experiment.id) for experiment in top],
                         weighting_method=method,
-                        weights=weights,
-                        metrics=metrics,
-                        diversification_benefit=benefit,
-                        correlation_matrix=correlations,
+                        weights=result.weights,
+                        metrics=result.metrics,
+                        diversification_benefit=float(
+                            result.metrics.get("diversification_ratio", 0.0)
+                        ),
+                        correlation_matrix={
+                            "columns": result.compatibility["columns"],
+                            "matrix": result.compatibility["matrix"],
+                        },
+                        definition=result.definition,
+                        compatibility=result.compatibility,
+                        rebalance_history=result.rebalance_history,
+                        incremental_benefit=result.incremental_benefit,
+                        rejection_reasons=result.rejection_reasons,
+                        ranking=result.ranking,
                     )
                 )
         evolution_run_id = self._run_evolution_if_requested(campaign, top)
@@ -519,6 +530,9 @@ class CampaignService:
                 "regime_robustness", {}
             ),
             "validation_engine": validation_experiment.run_metadata.get("backtest_engine", {}),
+            "validation_return_series": validation_experiment.run_metadata.get(
+                "portfolio_return_series", []
+            ),
             "walk_forward_windows": walk_forward_windows,
             "walk_forward": walk_forward,
             "test_period_locked": campaign.split_definition["test"],

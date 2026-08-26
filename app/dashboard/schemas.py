@@ -126,6 +126,7 @@ class CampaignDashboardResponse(BaseModel):
     current_best_candidate: dict[str, Any] | None
     stopping_condition: dict[str, Any]
     progress: list[dict[str, Any]]
+    portfolios: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PaperTradingDashboardResponse(BaseModel):
