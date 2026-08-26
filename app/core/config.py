@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         default=30.0, validation_alias="LIVE_MARKET_DATA_POLL_SECONDS"
     )
     execution_mode: str = Field(default="PAPER", validation_alias="EXECUTION_MODE")
+    backtest_engine: str = Field(default="python", validation_alias="BACKTEST_ENGINE")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

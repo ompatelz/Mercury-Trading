@@ -515,3 +515,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Testing](docs/testing.md)
 - [Paper trading](docs/paper_trading.md)
 - [Live execution](docs/live_execution.md)
+- [Performance and native backtesting](docs/performance.md)

@@ -153,6 +153,8 @@ jobs:
         run: cmake -S . -B build/native -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
       - name: C++ pybind11 build
         run: cmake --build build/native --config Release
+      - name: Native execution tests
+        run: ctest --test-dir build/native --output-on-failure
       - name: Native extension import
         run: python -c "import app.backtesting.native._engine"
       - name: Python native parity tests

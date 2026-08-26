@@ -2,9 +2,12 @@ cmake_minimum_required(VERSION 3.18)
 
 project(mercury_native LANGUAGES CXX)
 
+include(CTest)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
 
@@ -25,3 +28,11 @@ set_target_properties(
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/app/backtesting/native
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/app/backtesting/native
 )
+
+if(BUILD_TESTING)
+    add_test(
+        NAME native_execution_unit
+        COMMAND ${Python3_EXECUTABLE} -m pytest tests/unit/test_native_backtesting.py
+    )
+    set_tests_properties(native_execution_unit PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()

@@ -15,4 +15,5 @@ build/
 playwright-report/
 test-results/
 postgres-data/
+results/benchmarks/
 
