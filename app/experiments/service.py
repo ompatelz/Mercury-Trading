@@ -4,7 +4,8 @@ from decimal import Decimal
 import polars as pl
 from sqlalchemy.orm import Session
 
-from app.backtesting.engine import run_moving_average_backtest
+from app.backtesting.backends import get_backtest_engine
+from app.core.config import get_settings
 from app.market_data.repository import MarketDataRepository
 from app.models.experiment import BacktestTradeRecord, Experiment
 from app.models.market_data import MarketBar
@@ -56,13 +57,14 @@ class ExperimentService:
             "random_seed": None,
         }
         data_fingerprint = market_data_fingerprint(bars)
-        result = run_moving_average_backtest(
-            bars=frame,
-            short_window=request.short_window,
-            long_window=request.long_window,
-            initial_capital=request.initial_capital,
-            transaction_cost_bps=request.transaction_cost_bps,
-            slippage_bps=request.slippage_bps,
+        engine = get_backtest_engine(get_settings().backtest_engine)
+        result = engine.run_moving_average(
+            frame,
+            request.short_window,
+            request.long_window,
+            request.initial_capital,
+            request.transaction_cost_bps,
+            request.slippage_bps,
         )
         regime_observations = classify_regimes(bars)
         regime_performance = performance_by_regime(result.equity_curve, regime_observations)
@@ -97,6 +99,7 @@ class ExperimentService:
                     "environment": environment_fingerprint(),
                 },
                 "regime_version": REGIME_VERSION,
+                "backtest_engine": {"name": engine.name, "version": engine.version},
                 "regime_performance": regime_performance,
                 "regime_robustness": {
                     "score": robustness_score,

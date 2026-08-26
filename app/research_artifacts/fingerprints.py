@@ -11,7 +11,7 @@ import polars as pl
 
 from app.models.market_data import MarketBar
 
-BACKTESTER_VERSION = "moving-average-backtester-v1"
+BACKTESTER_VERSION = "moving-average-backtester-v2"
 STRATEGY_VERSION = "moving-average-crossover-v1"
 
 
