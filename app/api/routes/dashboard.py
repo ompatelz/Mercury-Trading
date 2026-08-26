@@ -15,8 +15,30 @@ from app.dashboard.schemas import (
 )
 from app.dashboard.service import DashboardService
 from app.db.session import get_session
+from app.evals.service import EvalService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/evals")
+def get_dashboard_evals(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, object]:
+    """Evidence-only view for the dashboard's champion/challenger section."""
+    service = EvalService(session)
+    return {
+        "experiments": [
+            {
+                "id": str(item.id),
+                "decision": item.decision,
+                "reason": item.reason,
+                "comparison": item.comparison,
+                "benchmark_name": item.benchmark_name,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in service.list_experiments()
+        ]
+    }
 
 
 @router.get("/overview", response_model=DashboardOverviewResponse)

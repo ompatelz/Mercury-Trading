@@ -289,8 +289,8 @@ latency thresholds. The decision and metric differences are stored in
 - Native acceleration: C++, CMake, pybind11.
 - Data: PostgreSQL, Alembic migrations, JSON structured metadata.
 - Agents: deterministic local model boundary for CI-safe research workflows.
-- Memory and evals: structured lessons, deterministic embeddings, benchmark
-  tasks, promotion rules.
+- Memory and evals: structured lessons, deterministic embeddings, versioned
+  workflow benchmarks, critical-regression gates, and champion promotion.
 - Campaigns: persisted PostgreSQL job queue, deterministic campaign
   orchestration, temporal splits, ranking, portfolio evaluation.
 - Quality: pytest, Ruff, mypy, GitHub Actions, Docker.

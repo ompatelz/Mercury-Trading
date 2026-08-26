@@ -29,6 +29,8 @@ class EvalRunResponse(BaseModel):
     workflow_version_id: UUID
     status: str
     aggregate_metrics: dict[str, Any]
+    benchmark_version: str
+    execution_metadata: dict[str, Any]
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -52,3 +54,39 @@ class VersionComparisonResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class WorkflowExperimentRequest(BaseModel):
+    baseline_workflow_version_id: UUID
+    candidate_workflow_version_id: UUID
+    benchmark_name: str = DEFAULT_BENCHMARK_NAME
+    promotion_rules: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowExperimentResponse(BaseModel):
+    id: UUID
+    baseline_workflow_version_id: UUID
+    candidate_workflow_version_id: UUID
+    benchmark_name: str
+    benchmark_version: str
+    baseline_eval_run_id: UUID
+    candidate_eval_run_id: UUID
+    promotion_config: dict[str, Any]
+    comparison: dict[str, Any]
+    decision: str
+    reason: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BenchmarkResponse(BaseModel):
+    name: str
+    version: str
+    tasks: list[dict[str, Any]]
+
+
+class ChampionResponse(BaseModel):
+    component: str
+    workflow_version_id: UUID
+    promoted_from_experiment_id: UUID | None
