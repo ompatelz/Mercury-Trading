@@ -220,6 +220,12 @@ class PortfolioEvaluationResponse(BaseModel):
     metrics: dict[str, Any]
     diversification_benefit: float
     correlation_matrix: dict[str, Any]
+    definition: dict[str, Any]
+    compatibility: dict[str, Any]
+    rebalance_history: list[dict[str, Any]]
+    incremental_benefit: dict[str, Any]
+    rejection_reasons: list[str]
+    ranking: dict[str, Any]
     created_at: datetime
 
     model_config = {"from_attributes": True}

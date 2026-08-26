@@ -85,6 +85,15 @@ class ExperimentService:
             run_metadata={
                 **result.metadata,
                 "charts": equity_charts(result.equity_curve),
+                "portfolio_return_series": [
+                    {
+                        "timestamp": _coerce_timestamp(row["timestamp"]).isoformat(),
+                        "return": float(row["strategy_return"]),
+                    }
+                    for row in result.equity_curve.select(
+                        ["timestamp", "strategy_return"]
+                    ).to_dicts()
+                ],
                 "reproducibility": {
                     "experiment_id": None,
                     "configuration": reproducibility_config,

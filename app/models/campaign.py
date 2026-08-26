@@ -239,6 +239,14 @@ class PortfolioEvaluation(Base):
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     diversification_benefit: Mapped[float] = mapped_column(nullable=False)
     correlation_matrix: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    definition: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    compatibility: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    rebalance_history: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    incremental_benefit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    rejection_reasons: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    ranking: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
