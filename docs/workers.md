@@ -56,4 +56,11 @@ campaign-experiment/job constraints prevent parallel delivery from creating extr
 Campaign finalization waits for all active jobs; workers never advance evolution.
 
 `scripts/benchmark_workers.py` records wall-clock time and throughput for real,
-already-queued jobs. It emits no claimed comparison numbers by default.
+already-queued jobs. Create matched campaigns, record one run with one worker and
+another with several workers, then compare only successful captures:
+
+```bash
+python scripts/compare_worker_benchmarks.py --sequential results/one.json --parallel results/many.json --output results/comparison.json
+```
+
+It rejects empty, failed, or uneven runs rather than producing a misleading claim.
