@@ -37,6 +37,11 @@ class WorkflowVersion(Base):
     backtester_version: Mapped[str] = mapped_column(String(32), nullable=False)
     retrieval_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     tool_versions: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
+    # An immutable, reviewable snapshot of every component which can influence a
+    # workflow result.  The individual columns above remain for compatibility
+    # with earlier Mercury records; this manifest is the source of truth for
+    # benchmark reproducibility.
+    manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -72,6 +77,21 @@ class VersionComparison(Base):
     metric_differences: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     decision: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class WorkflowChampion(Base):
+    __tablename__ = "workflow_champions"
+    __table_args__ = (UniqueConstraint("component", name="uq_workflow_champions_component"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    component: Mapped[str] = mapped_column(String(100), nullable=False)
+    workflow_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_versions.id"), nullable=False
+    )
+    promoted_from_experiment_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -180,7 +180,7 @@ def test_research_agent_eval_and_version_api(client: TestClient) -> None:
 
     tasks_response = client.get(f"/evals/{eval_payload['id']}/tasks")
     assert tasks_response.status_code == 200
-    assert len(tasks_response.json()) == 4
+    assert len(tasks_response.json()) == 8
 
     comparison_response = client.post(
         "/evals/compare",

@@ -15,7 +15,7 @@ def test_eval_runner_stores_deterministic_scores(db_session: Session) -> None:
     assert run.aggregate_metrics["task_success_rate"] == 1.0
     assert run.aggregate_metrics["invalid_strategy_rejection_rate"] == 1.0
     assert run.aggregate_metrics["estimated_cost"] == 0.0
-    assert len(results) == 4
+    assert len(results) == 8
     assert all(result.success for result in results)
 
 
@@ -71,3 +71,54 @@ def test_promotion_rules_reject_regressed_candidate(db_session: Session) -> None
 
     assert comparison.decision == "reject"
     assert comparison.metric_differences["task_success_rate"] == -0.5
+
+
+def test_workflow_experiment_blocks_critical_regression_and_promotes_only_after_pass(
+    db_session: Session,
+) -> None:
+    versions = AgentVersionService(db_session)
+    baseline = versions.ensure_default_workflow()
+    candidate = WorkflowVersion(
+        name="research_workflow",
+        version="critical-regression-v2",
+        backtester_version="moving_average_backtester:v1",
+        retrieval_config={},
+        tool_versions={},
+        manifest={"eval_behavior": {"lookahead_bias": {"reject": False}}},
+        status="candidate",
+    )
+    db_session.add(candidate)
+    db_session.flush()
+
+    experiment = EvalService(db_session).create_workflow_experiment(baseline.id, candidate.id)
+
+    assert experiment.decision == "REJECTED"
+    assert "lookahead_bias" in experiment.comparison["critical_regressions"]
+
+
+def test_memory_on_off_experiment_measures_retrieval_effect(db_session: Session) -> None:
+    versions = AgentVersionService(db_session)
+    baseline = versions.ensure_default_workflow()
+    without_memory = WorkflowVersion(
+        name="research_workflow",
+        version="without-memory-v2",
+        backtester_version="moving_average_backtester:v1",
+        retrieval_config={"enabled": False},
+        tool_versions={},
+        manifest={
+            "workflow": {"memory_enabled": False},
+            "eval_behavior": {
+                "memory_retrieval_relevance": {
+                    "retrieved_lesson_id": "lesson-btc",
+                    "irrelevant_retrieval": True,
+                }
+            },
+        },
+        status="candidate",
+    )
+    db_session.add(without_memory)
+    db_session.flush()
+
+    experiment = EvalService(db_session).create_workflow_experiment(without_memory.id, baseline.id)
+
+    assert experiment.comparison["task_success_delta"] > 0

@@ -169,3 +169,14 @@ export type PaperSessionDashboard = {
   rejected_orders: Array<Record<string, unknown>>;
   system_health: ComponentHealth[];
 };
+
+export type WorkflowEvalDashboard = {
+  experiments: Array<{
+    id: string;
+    decision: string;
+    reason: string;
+    comparison: Record<string, unknown>;
+    benchmark_name: string;
+    created_at: string;
+  }>;
+};
