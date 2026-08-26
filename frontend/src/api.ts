@@ -7,7 +7,8 @@ import type {
   PaperSessionDashboard,
   ReproductionResult,
   ResearchArtifact,
-  StrategyComparison
+  StrategyComparison,
+  WorkflowEvalDashboard
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -63,4 +64,8 @@ export function getCampaign(id: string): Promise<CampaignDashboard> {
 
 export function getPaperSession(id: string): Promise<PaperSessionDashboard> {
   return getJson(`/dashboard/paper-trading/sessions/${id}`);
+}
+
+export function getWorkflowEvals(): Promise<WorkflowEvalDashboard> {
+  return getJson("/dashboard/evals");
 }

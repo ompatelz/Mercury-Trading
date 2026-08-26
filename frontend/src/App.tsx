@@ -30,6 +30,7 @@ import {
   getLineage,
   getOverview,
   getPaperSession,
+  getWorkflowEvals,
   listExperiments,
   reproduceExperiment
 } from "./api";
@@ -42,7 +43,8 @@ import type {
   Lineage,
   PaperSessionDashboard,
   ReproductionResult,
-  ResearchArtifact
+  ResearchArtifact,
+  WorkflowEvalDashboard
 } from "./types";
 
 type LoadState<T> =
@@ -66,12 +68,14 @@ export function App() {
   const [lineage, setLineage] = useState<LoadState<Lineage>>({ status: "idle" });
   const [campaign, setCampaign] = useState<LoadState<CampaignDashboard>>({ status: "idle" });
   const [paper, setPaper] = useState<LoadState<PaperSessionDashboard>>({ status: "idle" });
+  const [workflowEvals, setWorkflowEvals] = useState<LoadState<WorkflowEvalDashboard>>({ status: "loading" });
   const [filters, setFilters] = useState({ symbol: "", status: "", strategy_family: "" });
   const [ids, setIds] = useState({ strategy: "", campaign: "", paper: "" });
 
   useEffect(() => {
     void refreshOverview();
     void refreshExperiments();
+    void refreshWorkflowEvals();
     // The initial load should not refetch while users type filters; Apply controls refresh timing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -118,6 +122,15 @@ export function App() {
       if (!selectedExperimentId && data.items[0]) setSelectedExperimentId(data.items[0].id);
     } catch (error) {
       setExperiments({ status: "error", error: (error as Error).message });
+    }
+  }
+
+  async function refreshWorkflowEvals() {
+    setWorkflowEvals({ status: "loading" });
+    try {
+      setWorkflowEvals({ status: "ready", data: await getWorkflowEvals() });
+    } catch (error) {
+      setWorkflowEvals({ status: "error", error: (error as Error).message });
     }
   }
 
@@ -488,11 +501,21 @@ export function App() {
 
       <section className="compare">
         <Panel title="Champion / Challenger" icon={<LineChart size={17} />}>
-          <p>
-            Use the strategy comparison endpoint with selected candidate ids to inspect promotion
-            criteria and rejection reasons. Candidate-level controls are intentionally explicit so the
-            dashboard does not imply a challenger decision without a real strategy id.
-          </p>
+          {workflowEvals.status === "ready" ? (
+            workflowEvals.data.experiments.length ? (
+              workflowEvals.data.experiments.slice(0, 5).map((item) => (
+                <div className="activityItem" key={item.id}>
+                  <span>{item.benchmark_name}</span>
+                  <strong>{item.decision}</strong>
+                  <small>{item.reason}</small>
+                </div>
+              ))
+            ) : (
+              <p className="empty">No workflow challengers have been evaluated.</p>
+            )
+          ) : (
+            <StateBlock state={workflowEvals.status} error={workflowEvals.error} label="workflow evals" />
+          )}
         </Panel>
       </section>
     </main>
