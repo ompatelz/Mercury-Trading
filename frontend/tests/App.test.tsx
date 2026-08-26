@@ -62,6 +62,7 @@ describe("App", () => {
       "fetch",
       vi.fn((url: string) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
+        if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
         if (url.includes("/dashboard/experiments/exp-1")) return ok(detail);
         if (url.includes("/experiments/exp-1/report")) return ok(report);
         if (url.includes("/dashboard/experiments")) {

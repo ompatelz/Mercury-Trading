@@ -128,7 +128,11 @@ export function App() {
   async function refreshWorkflowEvals() {
     setWorkflowEvals({ status: "loading" });
     try {
-      setWorkflowEvals({ status: "ready", data: await getWorkflowEvals() });
+      const data = await getWorkflowEvals();
+      setWorkflowEvals({
+        status: "ready",
+        data: { experiments: Array.isArray(data.experiments) ? data.experiments : [] }
+      });
     } catch (error) {
       setWorkflowEvals({ status: "error", error: (error as Error).message });
     }
