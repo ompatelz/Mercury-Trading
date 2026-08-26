@@ -393,6 +393,7 @@ class CampaignService:
             parameter_space=request.parameter_space,
             method=request.optimization_method,
             max_variants=max_trials,
+            seed=request.optimization_seed,
         )
         planned: list[CampaignExperiment] = []
         hypotheses: list[dict[str, Any]] = []
@@ -517,6 +518,7 @@ class CampaignService:
             "validation_regime_robustness": validation_experiment.run_metadata.get(
                 "regime_robustness", {}
             ),
+            "validation_engine": validation_experiment.run_metadata.get("backtest_engine", {}),
             "walk_forward_windows": walk_forward_windows,
             "walk_forward": walk_forward,
             "test_period_locked": campaign.split_definition["test"],

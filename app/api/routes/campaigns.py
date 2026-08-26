@@ -11,6 +11,9 @@ from app.campaigns.schemas import (
     CampaignJobResponse,
     CampaignResponse,
     CampaignRunRequest,
+    OptimizationStudyCreateRequest,
+    OptimizationStudyResponse,
+    OptimizationTrialResponse,
     PortfolioEvaluationResponse,
     QueueStatusResponse,
     StrategyRankingResponse,
@@ -18,11 +21,85 @@ from app.campaigns.schemas import (
     WorkerStatusResponse,
 )
 from app.campaigns.service import CampaignService
+from app.campaigns.study_service import OptimizationStudyService
 from app.db.session import get_session
 from app.models.campaign import CampaignJob
 from app.research_artifacts.service import ResearchArtifactService, artifact_to_dict
 
 router = APIRouter(tags=["campaigns"])
+
+
+@router.post(
+    "/optimization/studies",
+    response_model=OptimizationStudyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_optimization_study(
+    request: OptimizationStudyCreateRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> OptimizationStudyResponse:
+    try:
+        study = OptimizationStudyService(session).create(request)
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return OptimizationStudyResponse.model_validate(study)
+
+
+@router.get("/optimization/studies/{study_id}", response_model=OptimizationStudyResponse)
+def get_optimization_study(
+    study_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> OptimizationStudyResponse:
+    study = OptimizationStudyService(session).get(study_id)
+    if study is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="optimization study not found"
+        )
+    return OptimizationStudyResponse.model_validate(study)
+
+
+@router.get(
+    "/optimization/studies/{study_id}/trials", response_model=list[OptimizationTrialResponse]
+)
+def list_optimization_trials(
+    study_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> list[OptimizationTrialResponse]:
+    try:
+        return [
+            OptimizationTrialResponse.model_validate(item)
+            for item in OptimizationStudyService(session).list_trials(study_id)
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/optimization/studies/{study_id}/run", response_model=OptimizationStudyResponse)
+def run_optimization_study(
+    study_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> OptimizationStudyResponse:
+    try:
+        study = OptimizationStudyService(session).run(study_id)
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return OptimizationStudyResponse.model_validate(study)
+
+
+@router.post("/optimization/studies/{study_id}/cancel", response_model=OptimizationStudyResponse)
+def cancel_optimization_study(
+    study_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> OptimizationStudyResponse:
+    try:
+        study = OptimizationStudyService(session).cancel(study_id)
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return OptimizationStudyResponse.model_validate(study)
 
 
 @router.post("/campaigns", response_model=CampaignResponse, status_code=status.HTTP_201_CREATED)
