@@ -97,19 +97,42 @@ class CampaignJobResponse(BaseModel):
     id: UUID
     campaign_id: UUID
     campaign_experiment_id: UUID | None
+    experiment_id: UUID | None
     job_type: str
     status: str
     payload: dict[str, Any]
+    payload_version: int
     worker: str | None
+    priority: int
     attempt_count: int
     max_attempts: int
     started_at: datetime | None
     ended_at: datetime | None
+    heartbeat_at: datetime | None
+    available_at: datetime
+    cancel_requested: bool
+    retry_history: list[dict[str, Any]]
+    error_type: str | None
     error_message: str | None
     runtime_ms: float | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class QueueStatusResponse(BaseModel):
+    jobs_queued: int
+    jobs_running: int
+    jobs_succeeded: int
+    jobs_failed: int
+    jobs_retrying: int
+    jobs_cancelled: int
+
+
+class WorkerStatusResponse(BaseModel):
+    worker_id: str
+    active_jobs: int
+    last_heartbeat_at: datetime | None
 
 
 class StrategyRankingResponse(BaseModel):

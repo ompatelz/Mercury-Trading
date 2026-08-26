@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.campaigns.optimization import generate_parameter_variants
 from app.campaigns.schemas import CampaignCreateRequest
 from app.campaigns.service import CampaignService
+from app.models.campaign import CampaignJob
 from app.models.market_data import MarketBar
 
 
@@ -63,6 +64,76 @@ def test_campaign_worker_runs_jobs_and_builds_rankings(db_session: Session) -> N
         for window in walk_forward_windows
     )
     assert all(window["uses_locked_test_split"] is False for window in walk_forward_windows)
+
+
+def test_job_cancellation_and_stale_worker_recovery(db_session: Session) -> None:
+    service = CampaignService(db_session)
+    campaign = service.create_campaign(
+        CampaignCreateRequest(
+            objective="Can deterministic jobs safely recover after a worker lease expires?",
+            symbols=["MSFT"],
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 15),
+            parameter_space={"short_window": [2], "long_window": [5]},
+        )
+    )
+    job = service.run_campaign(campaign.id)[0]
+    cancelled = service.cancel_job(job.id)
+
+    assert cancelled.status == "CANCELLED"
+    assert service.claim_next_job("worker-a") is None
+
+    stale_job = CampaignJob(
+        campaign_id=campaign.id,
+        campaign_experiment_id=None,
+        job_type="RUN_BACKTEST",
+        status="RUNNING",
+        payload={"version": 1},
+        idempotency_key="stale-job",
+        worker="lost-worker",
+        attempt_count=1,
+        max_attempts=3,
+        heartbeat_at=None,
+        retry_history=[],
+    )
+    db_session.add(stale_job)
+    db_session.flush()
+
+    assert service.recover_stale_jobs(stale_after_seconds=1) == 1
+    assert stale_job.status == "RETRYING"
+    assert stale_job.error_type == "RuntimeError"
+    assert stale_job.retry_history[0]["retryable"] is True
+
+
+def test_deterministic_job_failure_is_not_retried(db_session: Session) -> None:
+    service = CampaignService(db_session)
+    campaign = service.create_campaign(
+        CampaignCreateRequest(
+            objective="Can invalid worker jobs fail without an unsafe retry loop?",
+            symbols=["MSFT"],
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 15),
+            parameter_space={"short_window": [2], "long_window": [5]},
+        )
+    )
+    job = CampaignJob(
+        campaign_id=campaign.id,
+        campaign_experiment_id=None,
+        job_type="INVALID_JOB",
+        status="QUEUED",
+        payload={"version": 1},
+        idempotency_key="invalid-job",
+        retry_history=[],
+    )
+    db_session.add(job)
+    db_session.flush()
+
+    result = service.process_next_job("worker-a")
+
+    assert result is not None
+    assert result.status == "FAILED"
+    assert result.attempt_count == 1
+    assert result.error_type == "ValueError"
 
 
 def _seed_bars(session: Session, symbol: str, days: int) -> None:

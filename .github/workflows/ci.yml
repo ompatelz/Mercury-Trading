@@ -165,6 +165,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build .
+      - name: Validate Compose worker topology
+        run: docker compose config --quiet
 
   repo-hygiene:
     name: Repository Hygiene
