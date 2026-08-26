@@ -306,11 +306,15 @@ uvicorn app.main:app --reload
 
 The API runs at `http://localhost:8000`.
 
-Worker:
+Workers use durable PostgreSQL leases and can run independently:
 
 ```bash
-python scripts/run_worker.py --worker-name local-worker
+python scripts/run_worker.py --worker-name research-a
+python scripts/run_worker.py --worker-name research-b
 ```
+
+See [worker architecture and operations](docs/workers.md) for idempotency,
+retries, cancellation, recovery, and benchmark instructions.
 
 Docker:
 

@@ -1,10 +1,10 @@
 import time
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.campaigns.optimization import generate_parameter_variants, idempotency_key
@@ -97,8 +97,8 @@ class CampaignService:
             job = self._create_job(
                 campaign=campaign,
                 campaign_experiment=planned,
-                job_type="backtest_experiment",
-                payload={"campaign_experiment_id": str(planned.id)},
+                job_type="RUN_BACKTEST",
+                payload={"version": 1, "campaign_experiment_id": str(planned.id)},
                 idempotency_key=f"backtest:{planned.id}",
             )
             if job is not None:
@@ -113,10 +113,10 @@ class CampaignService:
         for job in self.session.scalars(
             select(CampaignJob).where(
                 CampaignJob.campaign_id == campaign.id,
-                CampaignJob.status.in_(["queued", "retrying"]),
+                CampaignJob.status.in_(["QUEUED", "RETRYING"]),
             )
         ):
-            job.status = "cancelled"
+            job.status = "CANCELLED"
             job.ended_at = _utcnow()
         self.session.flush()
         self.session.refresh(campaign)
@@ -130,6 +130,68 @@ class CampaignService:
 
     def get_job(self, job_id: UUID) -> CampaignJob | None:
         return self.session.get(CampaignJob, job_id)
+
+    def cancel_job(self, job_id: UUID) -> CampaignJob:
+        job = self._require_job(job_id)
+        if job.status in {"SUCCEEDED", "FAILED", "CANCELLED"}:
+            return job
+        if job.status == "RUNNING":
+            job.cancel_requested = True
+        else:
+            job.status = "CANCELLED"
+            job.ended_at = _utcnow()
+        self.session.flush()
+        return job
+
+    def claim_next_job(self, worker_name: str) -> CampaignJob | None:
+        """Lease one eligible job with PostgreSQL SKIP LOCKED duplicate protection."""
+        now = self._database_now()
+        statement = (
+            select(CampaignJob)
+            .where(
+                CampaignJob.status.in_(["QUEUED", "RETRYING"]),
+                CampaignJob.available_at <= now,
+                CampaignJob.cancel_requested.is_(False),
+            )
+            .order_by(CampaignJob.priority.desc(), CampaignJob.created_at)
+            .limit(1)
+        )
+        if self.session.bind is not None and self.session.bind.dialect.name == "postgresql":
+            statement = statement.with_for_update(skip_locked=True)
+        job = self.session.scalar(statement)
+        if job is None:
+            return None
+        job.status = "RUNNING"
+        job.worker = worker_name
+        job.attempt_count += 1
+        job.started_at = _utcnow()
+        job.heartbeat_at = job.started_at
+        job.error_message = None
+        job.error_type = None
+        self.session.flush()
+        return job
+
+    def heartbeat(self, job_id: UUID, worker_name: str) -> CampaignJob:
+        job = self._require_job(job_id)
+        if job.status == "RUNNING" and job.worker == worker_name:
+            job.heartbeat_at = _utcnow()
+            self.session.flush()
+        return job
+
+    def recover_stale_jobs(self, stale_after_seconds: int = 300) -> int:
+        cutoff = self._database_now() - timedelta(seconds=stale_after_seconds)
+        running_jobs = list(
+            self.session.scalars(select(CampaignJob).where(CampaignJob.status == "RUNNING"))
+        )
+        jobs = [
+            job
+            for job in running_jobs
+            if job.heartbeat_at is None or job.heartbeat_at.replace(tzinfo=cutoff.tzinfo) < cutoff
+        ]
+        for job in jobs:
+            self._retry_or_fail(job, RuntimeError("worker lease expired"), force_retry=True)
+        self.session.flush()
+        return len(jobs)
 
     def list_experiments(self, campaign_id: UUID) -> list[CampaignExperiment]:
         return list(
@@ -166,32 +228,37 @@ class CampaignService:
         return campaign.final_conclusions
 
     def process_next_job(self, worker_name: str) -> CampaignJob | None:
-        job = self.session.scalar(
-            select(CampaignJob)
-            .where(CampaignJob.status.in_(["queued", "retrying"]))
-            .order_by(CampaignJob.created_at)
-        )
+        """Compatibility helper for tests and the development API.
+
+        Production workers use claim_next_job and execute_claimed_job in separate
+        transactions so the lease is committed before expensive numerical work.
+        """
+        job = self.claim_next_job(worker_name)
         if job is None:
             return None
+        return self.execute_claimed_job(job.id, worker_name)
+
+    def execute_claimed_job(self, job_id: UUID, worker_name: str) -> CampaignJob:
+        job = self._require_job(job_id)
+        if job.status != "RUNNING" or job.worker != worker_name:
+            raise ValueError("job is not leased by this worker")
         started = time.perf_counter()
-        job.status = "running"
-        job.worker = worker_name
-        job.attempt_count += 1
-        job.started_at = _utcnow()
-        job.error_message = None
-        self.session.flush()
         try:
-            if job.job_type == "backtest_experiment":
+            self._raise_if_cancelled(job)
+            if job.job_type == "RUN_BACKTEST":
                 self._run_campaign_experiment(job)
-            elif job.job_type == "generate_report":
+            elif job.job_type == "GENERATE_REPORT":
                 self.finalize_campaign(job.campaign_id)
             else:
                 raise ValueError(f"unknown job type: {job.job_type}")
-            job.status = "succeeded"
+            self._raise_if_cancelled(job)
+            job.status = "SUCCEEDED"
         except Exception as exc:
-            job.error_message = str(exc)
-            job.status = "retrying" if job.attempt_count < job.max_attempts else "failed"
-            raise
+            if job.cancel_requested:
+                job.status = "CANCELLED"
+                job.error_message = None
+            else:
+                self._retry_or_fail(job, exc)
         finally:
             job.ended_at = _utcnow()
             job.runtime_ms = round((time.perf_counter() - started) * 1000.0, 6)
@@ -387,16 +454,20 @@ class CampaignService:
             campaign_id=campaign.id,
             campaign_experiment_id=campaign_experiment.id if campaign_experiment else None,
             job_type=job_type,
-            status="queued",
+            status="QUEUED",
             payload=payload,
+            payload_version=int(payload.get("version", 1)),
             idempotency_key=idempotency_key,
             max_attempts=int(campaign.constraints.get("max_job_attempts", 3)),
+            priority=int(campaign.constraints.get("job_priority", 0)),
+            retry_history=[],
         )
         self.session.add(job)
         try:
-            self.session.flush()
+            with self.session.begin_nested():
+                self.session.flush()
         except IntegrityError:
-            self.session.rollback()
+            self.session.expunge(job)
             return None
         return job
 
@@ -432,6 +503,7 @@ class CampaignService:
         )
         walk_forward = aggregate_walk_forward(walk_forward_windows)
         planned.experiment_id = validation_experiment.id
+        job.experiment_id = validation_experiment.id
         planned.status = "completed"
         planned.metrics = validation_experiment.metrics
         planned.evaluation = {
@@ -511,9 +583,9 @@ class CampaignService:
     def _refresh_campaign_state(self, campaign_id: UUID) -> None:
         campaign = self._require_campaign(campaign_id)
         jobs = self.list_jobs(campaign.id)
-        if any(job.status in {"queued", "retrying", "running"} for job in jobs):
+        if any(job.status in {"QUEUED", "RETRYING", "RUNNING"} for job in jobs):
             campaign.status = "running"
-        elif any(job.status == "failed" for job in jobs):
+        elif any(job.status == "FAILED" for job in jobs):
             campaign.status = "failed"
         elif jobs:
             self.finalize_campaign(campaign.id)
@@ -524,6 +596,51 @@ class CampaignService:
         if campaign is None:
             raise ValueError("campaign not found")
         return campaign
+
+    def _require_job(self, job_id: UUID) -> CampaignJob:
+        job = self.session.get(CampaignJob, job_id)
+        if job is None:
+            raise ValueError("job not found")
+        return job
+
+    def _database_now(self) -> datetime:
+        now = _utcnow()
+        if self.session.bind is not None and self.session.bind.dialect.name == "sqlite":
+            return now.replace(tzinfo=None)
+        return now
+
+    def _raise_if_cancelled(self, job: CampaignJob) -> None:
+        self.session.refresh(job)
+        if job.cancel_requested:
+            raise RuntimeError("job cancellation requested")
+
+    def _retry_or_fail(
+        self, job: CampaignJob, exc: Exception, *, force_retry: bool = False
+    ) -> None:
+        transient = force_retry or isinstance(
+            exc, (ConnectionError, TimeoutError, OperationalError)
+        )
+        retryable = transient and job.attempt_count < job.max_attempts
+        job.error_type = type(exc).__name__
+        job.error_message = str(exc)
+        history = list(job.retry_history or [])
+        history.append(
+            {
+                "attempt": job.attempt_count,
+                "at": _utcnow().isoformat(),
+                "error_type": job.error_type,
+                "message": job.error_message,
+                "retryable": retryable,
+            }
+        )
+        job.retry_history = history
+        if retryable:
+            job.status = "RETRYING"
+            job.available_at = _utcnow() + timedelta(seconds=min(60, 2**job.attempt_count))
+            job.worker = None
+            job.heartbeat_at = None
+        else:
+            job.status = "FAILED"
 
     def _run_evolution_if_requested(
         self,

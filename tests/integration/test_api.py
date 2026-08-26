@@ -225,11 +225,16 @@ def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None
 
     run_response = client.post(f"/campaigns/{campaign['id']}/run", json={})
     assert run_response.status_code == 200
-    assert run_response.json()[0]["status"] == "queued"
+    assert run_response.json()[0]["status"] == "QUEUED"
+    queue_response = client.get("/queue/status")
+    assert queue_response.status_code == 200
+    assert queue_response.json()["jobs_queued"] == 1
+    assert client.get("/workers").json() == []
 
     worker_response = client.post("/jobs/work", json={"worker_name": "api-test", "max_jobs": 1})
     assert worker_response.status_code == 200
-    assert worker_response.json()[0]["status"] == "succeeded"
+    assert worker_response.json()[0]["status"] == "SUCCEEDED"
+    assert client.get("/queue/status").json()["jobs_succeeded"] == 1
 
     ranking_response = client.get(f"/campaigns/{campaign['id']}/rankings")
     assert ranking_response.status_code == 200

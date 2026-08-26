@@ -237,7 +237,7 @@ class DashboardService:
             constraints=campaign.constraints,
             budget=campaign.budget,
             budget_used=campaign.budget_used,
-            rounds_completed=len([job for job in jobs if job.status == "succeeded"]),
+            rounds_completed=len([job for job in jobs if job.status == "SUCCEEDED"]),
             hypotheses_explored=len(campaign.generated_hypotheses),
             experiment_count=len(experiments),
             rejected_strategy_count=len(campaign.rejected_strategies),

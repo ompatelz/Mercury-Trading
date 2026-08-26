@@ -2,7 +2,19 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -88,7 +100,7 @@ class CampaignJob(Base):
     __tablename__ = "campaign_jobs"
     __table_args__ = (
         UniqueConstraint("campaign_id", "idempotency_key", name="uq_campaign_jobs_idempotency"),
-        Index("ix_campaign_jobs_status_created", "status", "created_at"),
+        Index("ix_campaign_jobs_status_available_priority", "status", "available_at", "priority"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -98,15 +110,27 @@ class CampaignJob(Base):
     campaign_experiment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("campaign_experiments.id", ondelete="SET NULL"), nullable=True
     )
+    experiment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("experiments.id", ondelete="SET NULL"), nullable=True
+    )
     job_type: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    payload_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     worker: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(default=3, nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    retry_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    error_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     runtime_ms: Mapped[float | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(

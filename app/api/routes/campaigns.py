@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.campaigns.schemas import (
@@ -11,11 +12,14 @@ from app.campaigns.schemas import (
     CampaignResponse,
     CampaignRunRequest,
     PortfolioEvaluationResponse,
+    QueueStatusResponse,
     StrategyRankingResponse,
     WorkerRunRequest,
+    WorkerStatusResponse,
 )
 from app.campaigns.service import CampaignService
 from app.db.session import get_session
+from app.models.campaign import CampaignJob
 from app.research_artifacts.service import ResearchArtifactService, artifact_to_dict
 
 router = APIRouter(tags=["campaigns"])
@@ -143,6 +147,48 @@ def get_job(job_id: UUID, session: Annotated[Session, Depends(get_session)]) -> 
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
     return CampaignJobResponse.model_validate(job)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=CampaignJobResponse)
+def cancel_job(
+    job_id: UUID, session: Annotated[Session, Depends(get_session)]
+) -> CampaignJobResponse:
+    try:
+        job = CampaignService(session).cancel_job(job_id)
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return CampaignJobResponse.model_validate(job)
+
+
+@router.get("/queue/status", response_model=QueueStatusResponse)
+def queue_status(session: Annotated[Session, Depends(get_session)]) -> QueueStatusResponse:
+    rows = session.execute(
+        select(CampaignJob.status, func.count()).group_by(CampaignJob.status)
+    ).all()
+    counts: dict[str, int] = {job_status: count for job_status, count in rows}
+    return QueueStatusResponse(
+        jobs_queued=counts.get("QUEUED", 0),
+        jobs_running=counts.get("RUNNING", 0),
+        jobs_succeeded=counts.get("SUCCEEDED", 0),
+        jobs_failed=counts.get("FAILED", 0),
+        jobs_retrying=counts.get("RETRYING", 0),
+        jobs_cancelled=counts.get("CANCELLED", 0),
+    )
+
+
+@router.get("/workers", response_model=list[WorkerStatusResponse])
+def workers(session: Annotated[Session, Depends(get_session)]) -> list[WorkerStatusResponse]:
+    rows = session.execute(
+        select(CampaignJob.worker, func.count(), func.max(CampaignJob.heartbeat_at))
+        .where(CampaignJob.worker.is_not(None), CampaignJob.status == "RUNNING")
+        .group_by(CampaignJob.worker)
+    )
+    return [
+        WorkerStatusResponse(worker_id=row[0], active_jobs=row[1], last_heartbeat_at=row[2])
+        for row in rows
+    ]
 
 
 @router.post("/jobs/work", response_model=list[CampaignJobResponse])
