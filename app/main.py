@@ -9,6 +9,7 @@ from app.api.routes import (
     decisions,
     evals,
     evolution,
+    factor_research,
     health,
     live,
     market_data,
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(live.router)
     app.include_router(market_data.router)
     app.include_router(data.router)
+    app.include_router(factor_research.router)
     app.include_router(decisions.router)
     app.include_router(backtests.router)
     app.include_router(stress_tests.router)
