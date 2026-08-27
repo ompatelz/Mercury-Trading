@@ -77,19 +77,35 @@ class CppBacktestEngine:
         started = perf_counter()
         prepared = moving_average_crossover_signals(bars, short_window, long_window)
         native = import_module("app.backtesting.native._engine")
-        raw = cast(
-            dict[str, object],
-            native.run_long_only_execution(
-                prepared.get_column("timestamp").to_list(),
-                _contiguous(prepared, "open"),
-                _contiguous(prepared, "close"),
-                _contiguous(prepared, "position"),
-                initial_capital,
-                transaction_cost_bps,
-                slippage_bps,
-            ),
-        )
         timestamps = prepared.get_column("timestamp").to_list()
+        opens = _contiguous(prepared, "open")
+        closes = _contiguous(prepared, "close")
+        positions = _contiguous(prepared, "position")
+        try:
+            raw = cast(
+                dict[str, object],
+                native.run_long_only_execution(
+                    opens,
+                    closes,
+                    positions,
+                    initial_capital,
+                    transaction_cost_bps,
+                    slippage_bps,
+                ),
+            )
+        except TypeError:
+            raw = cast(
+                dict[str, object],
+                native.run_long_only_execution(
+                    timestamps,
+                    opens,
+                    closes,
+                    positions,
+                    initial_capital,
+                    transaction_cost_bps,
+                    slippage_bps,
+                ),
+            )
         if "equity_curve" in raw:
             equity_curve = pl.DataFrame(cast(list[dict[str, object]], raw["equity_curve"]))
             equity_curve = equity_curve.with_columns(
