@@ -1,5 +1,6 @@
 import type {
   CampaignDashboard,
+  Decision,
   Dataset,
   DatasetCatalogItem,
   DatasetVersion,
@@ -71,6 +72,10 @@ export function getPaperSession(id: string): Promise<PaperSessionDashboard> {
 
 export function getWorkflowEvals(): Promise<WorkflowEvalDashboard> {
   return getJson("/dashboard/evals");
+}
+
+export function listDecisions(): Promise<Decision[]> {
+  return getJson("/decisions");
 }
 
 export async function listDatasetCatalog(): Promise<DatasetCatalogItem[]> {

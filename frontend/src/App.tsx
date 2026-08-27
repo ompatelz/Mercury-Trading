@@ -32,12 +32,14 @@ import {
   getOverview,
   getPaperSession,
   getWorkflowEvals,
+  listDecisions,
   listDatasetCatalog,
   listExperiments,
   reproduceExperiment
 } from "./api";
 import type {
   CampaignDashboard,
+  Decision,
   DatasetCatalogItem,
   DashboardMetric,
   DashboardOverview,
@@ -72,6 +74,7 @@ export function App() {
   const [campaign, setCampaign] = useState<LoadState<CampaignDashboard>>({ status: "idle" });
   const [paper, setPaper] = useState<LoadState<PaperSessionDashboard>>({ status: "idle" });
   const [workflowEvals, setWorkflowEvals] = useState<LoadState<WorkflowEvalDashboard>>({ status: "loading" });
+  const [decisions, setDecisions] = useState<LoadState<Decision[]>>({ status: "loading" });
   const [dataCatalog, setDataCatalog] = useState<LoadState<DatasetCatalogItem[]>>({
     status: "loading"
   });
@@ -82,6 +85,7 @@ export function App() {
     void refreshOverview();
     void refreshExperiments();
     void refreshWorkflowEvals();
+    void refreshDecisions();
     void refreshDataCatalog();
     // The initial load should not refetch while users type filters; Apply controls refresh timing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,6 +155,15 @@ export function App() {
       setDataCatalog({ status: "ready", data: await listDatasetCatalog() });
     } catch (error) {
       setDataCatalog({ status: "error", error: (error as Error).message });
+    }
+  }
+
+  async function refreshDecisions() {
+    setDecisions({ status: "loading" });
+    try {
+      setDecisions({ status: "ready", data: await listDecisions() });
+    } catch (error) {
+      setDecisions({ status: "error", error: (error as Error).message });
     }
   }
 
@@ -345,6 +358,44 @@ export function App() {
             )
           ) : (
             <StateBlock state={dataCatalog.status} error={dataCatalog.error} label="research data" />
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid">
+        <Panel title="Audit / Decisions" icon={<Scale size={17} />}>
+          {decisions.status === "ready" ? (
+            decisions.data.length ? (
+              <div className="decisionList" data-testid="decision-audit">
+                {decisions.data.slice(0, 8).map((item) => (
+                  <article className="decisionItem" key={item.id}>
+                    <div>
+                      <span>{item.decision_type}</span>
+                      <strong>{item.outcome}</strong>
+                      <small>{item.reason}</small>
+                    </div>
+                    <div className="decisionMeta">
+                      <span>{item.actor}</span>
+                      <span>{item.content_hash.slice(0, 12)}</span>
+                      <span>{item.integrity.verified === false ? "hash mismatch" : "hash verified"}</span>
+                    </div>
+                    {item.rules.length ? (
+                      <div className="ruleList">
+                        {item.rules.map((rule) => (
+                          <span className={rule.passed ? "passed" : "failed"} key={rule.rule}>
+                            {rule.rule}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="empty">No decisions have been recorded yet.</p>
+            )
+          ) : (
+            <StateBlock state={decisions.status} error={decisions.error} label="decisions" />
           )}
         </Panel>
       </section>

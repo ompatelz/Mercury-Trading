@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
@@ -9,9 +10,19 @@ from app.evolution.mutation import mutate_strategy
 from app.evolution.schemas import EvolutionRunCreateRequest
 from app.evolution.specification import StrategySpecification, moving_average_specification
 from app.experiments.service import ExperimentService
+from app.governance.service import DecisionService
 from app.memory.service import ResearchMemoryService
 from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.schemas.experiment import BacktestRequest
+
+
+@dataclass(frozen=True)
+class _PopulationEntry:
+    specification: StrategySpecification
+    parent_ids: list[str]
+    mutation_type: str | None
+    changed_fields: list[str]
+    memory_ids: list[str]
 
 
 class EvolutionService:
@@ -36,29 +47,36 @@ class EvolutionService:
         run.memory_provenance = memory_hints
 
         population = [
-            moving_average_specification(
-                short_window=int(item["short_window"]),
-                long_window=int(item["long_window"]),
+            _PopulationEntry(
+                specification=moving_average_specification(
+                    short_window=int(item["short_window"]),
+                    long_window=int(item["long_window"]),
+                ),
+                parent_ids=[],
+                mutation_type=None,
+                changed_fields=[],
+                memory_ids=[],
             )
             for item in request.initial_population[: request.population_size]
         ]
         champion: StrategyCandidate | None = None
         rejected = 0
         for generation in range(request.generations):
-            diversity = population_diversity(population)
+            specifications = [item.specification for item in population]
+            diversity = population_diversity(specifications)
             candidates = [
                 self._evaluate_candidate(
                     run=run,
                     request=request,
-                    specification=specification,
+                    specification=item.specification,
                     generation=generation,
                     diversity=diversity,
-                    parent_ids=[] if generation == 0 else [str(champion.id)] if champion else [],
-                    mutation_type=None if generation == 0 else "mutation",
-                    changed_fields=[] if generation == 0 else ["inherited"],
-                    memory_ids=[],
+                    parent_ids=item.parent_ids,
+                    mutation_type=item.mutation_type,
+                    changed_fields=item.changed_fields,
+                    memory_ids=item.memory_ids,
                 )
-                for specification in population
+                for item in population
             ]
             candidates = sorted(
                 candidates, key=lambda item: float(item.fitness["score"]), reverse=True
@@ -71,9 +89,53 @@ class EvolutionService:
             else:
                 best.rejection_reason = str(decision["reason"])
                 rejected += 1
+            DecisionService(self.session).record(
+                decision_type="STRATEGY_PROMOTION"
+                if decision["decision"] == "promote"
+                else "STRATEGY_REJECTION",
+                outcome=str(decision["decision"]).upper(),
+                actor="EvolutionService",
+                reason=str(decision["reason"]),
+                strategy_id=best.id,
+                correlation_id=str(run.id),
+                inputs={
+                    "parent_strategy_ids": best.parent_strategy_ids,
+                    "mutation_type": best.mutation_type,
+                    "changed_fields": best.changed_fields,
+                },
+                metrics=best.fitness,
+                alternatives=[
+                    {"strategy_id": str(item.id), "fitness": item.fitness}
+                    for item in candidates
+                    if item.id != best.id
+                ],
+                provenance={
+                    "evolution_run_id": str(run.id),
+                    "memory": run.memory_provenance,
+                    "regime_performance": best.regime_performance,
+                },
+                versions={"fitness": "v1", "strategy_specification": "v1"},
+                rules=[
+                    {
+                        "rule": "CHAMPION_MARGIN",
+                        "rule_version": "v1",
+                        "threshold": "strict fitness improvement",
+                        "observed_value": best.fitness.get("score"),
+                        "passed": decision["decision"] == "promote",
+                    }
+                ],
+            )
             parents = candidates[: max(1, min(len(candidates), request.population_size // 2))]
             population = [
-                StrategySpecification.model_validate(parent.strategy_specification)
+                _PopulationEntry(
+                    specification=StrategySpecification.model_validate(
+                        parent.strategy_specification
+                    ),
+                    parent_ids=parent.parent_strategy_ids,
+                    mutation_type=None,
+                    changed_fields=[],
+                    memory_ids=parent.memory_ids,
+                )
                 for parent in parents
             ]
             while len(population) < request.population_size:
@@ -83,7 +145,15 @@ class EvolutionService:
                     generation=generation + 1,
                     memory_hints=memory_hints,
                 )
-                population.append(mutation.specification)
+                population.append(
+                    _PopulationEntry(
+                        specification=mutation.specification,
+                        parent_ids=[str(parent.id)],
+                        mutation_type=mutation.mutation_type,
+                        changed_fields=mutation.changed_fields,
+                        memory_ids=mutation.memory_ids,
+                    )
+                )
 
         all_candidates = self.list_candidates(run.id)
         run.status = "completed"
@@ -188,6 +258,23 @@ class EvolutionService:
         )
         self.session.add(candidate)
         self.session.flush()
+        if mutation_type:
+            DecisionService(self.session).record(
+                decision_type="MUTATION_SELECTION",
+                outcome="SELECTED",
+                actor="EvolutionService",
+                reason="Candidate mutation was selected for deterministic backtest evaluation.",
+                strategy_id=candidate.id,
+                correlation_id=str(run.id),
+                inputs={"mutation_type": mutation_type, "changed_fields": changed_fields},
+                metrics=candidate.fitness,
+                provenance={
+                    "parent_strategy_ids": parent_ids,
+                    "memory_ids": memory_ids,
+                    "memory_retrieval": run.memory_provenance,
+                },
+                versions={"mutation": "v1", "fitness": "v1"},
+            )
         return candidate
 
     def _retrieve_memory(self, request: EvolutionRunCreateRequest) -> list[dict[str, object]]:

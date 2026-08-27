@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.backtesting.engine import run_moving_average_backtest
 from app.data.service import DataLineageService, DataQualityError
 from app.experiments.service import _bars_to_frame, _filter_frame_window, _frame_to_bars
+from app.governance.service import DecisionService
 from app.market_data.repository import MarketDataRepository
 from app.models.agent import ResearchTraceEvent
 from app.models.campaign import CampaignExperiment, ResearchCampaign, StrategyRanking
@@ -233,6 +234,12 @@ class ResearchArtifactService:
         overfitting_flags = campaign_experiment.risk_flags if campaign_experiment else []
         measured = _measured_results(experiment.metrics)
         interpretation = _interpret_experiment(experiment.metrics, risk_flags)
+        provenance = _experiment_provenance(
+            experiment, research_experiment, memory_lessons, trace_events
+        )
+        provenance["decision_audit"] = _decision_summaries(
+            self.session, experiment_id=experiment.id
+        )
         payload = {
             "artifact_type": "experiment",
             "experiment_id": experiment.id,
@@ -266,9 +273,7 @@ class ResearchArtifactService:
             },
             "measured_results": measured,
             "interpretation": interpretation,
-            "provenance": _experiment_provenance(
-                experiment, research_experiment, memory_lessons, trace_events
-            ),
+            "provenance": provenance,
             "reproducibility_metadata": repro or _legacy_reproducibility_metadata(experiment),
             "charts": _dict_value(experiment.run_metadata, "charts"),
             "export_metadata": {"formats": ["json", "markdown"], "storage": "database"},
@@ -308,6 +313,8 @@ class ResearchArtifactService:
             ],
         }
         risk_flags = sorted({flag for item in completed for flag in item.risk_flags})
+        provenance = _campaign_provenance(campaign, completed)
+        provenance["decision_audit"] = _decision_summaries(self.session, campaign_id=campaign.id)
         payload = {
             "artifact_type": "campaign",
             "experiment_id": None,
@@ -352,7 +359,7 @@ class ResearchArtifactService:
             },
             "measured_results": measured,
             "interpretation": _interpret_campaign(completed, rankings, risk_flags),
-            "provenance": _campaign_provenance(campaign, completed),
+            "provenance": provenance,
             "reproducibility_metadata": {
                 "campaign_id": str(campaign.id),
                 "split_definition": campaign.split_definition,
@@ -635,6 +642,33 @@ def _campaign_provenance(
     }
 
 
+def _decision_summaries(
+    session: Session,
+    *,
+    campaign_id: UUID | None = None,
+    experiment_id: UUID | None = None,
+) -> list[dict[str, Any]]:
+    service = DecisionService(session)
+    return [
+        {
+            "decision_id": str(item["id"]),
+            "decision_type": item["decision_type"],
+            "outcome": item["outcome"],
+            "reason": item["reason"],
+            "content_hash": item["content_hash"],
+            "integrity_verified": item["integrity"]["verified"],
+            "created_at": item["created_at"].isoformat(),
+        }
+        for item in (
+            service.explain(record.id)
+            for record in service.list_decisions(
+                campaign_id=campaign_id, experiment_id=experiment_id
+            )
+        )
+        if item is not None
+    ]
+
+
 def _legacy_reproducibility_metadata(experiment: Experiment) -> dict[str, Any]:
     return {
         "experiment_id": str(experiment.id),
@@ -689,6 +723,9 @@ def _experiment_markdown(payload: dict[str, Any], trades: list[BacktestTradeReco
             "## Conclusion",
             _json_line(payload["conclusion"]),
             "",
+            "## Decision Audit",
+            _json_line(payload["provenance"].get("decision_audit", [])),
+            "",
             "## Reproducibility",
             _json_line(payload["reproducibility_metadata"]),
         ]
@@ -720,6 +757,9 @@ def _campaign_markdown(payload: dict[str, Any]) -> str:
             "",
             "## Provenance",
             _json_line(payload["provenance"]),
+            "",
+            "## Decision Audit",
+            _json_line(payload["provenance"].get("decision_audit", [])),
             "",
             "## Reproducibility",
             _json_line(payload["reproducibility_metadata"]),
