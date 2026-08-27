@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     )
     execution_mode: str = Field(default="PAPER", validation_alias="EXECUTION_MODE")
     backtest_engine: str = Field(default="python", validation_alias="BACKTEST_ENGINE")
+    routing_policy: str = Field(default="balanced", validation_alias="ROUTING_POLICY")
+    allow_model_fallback: bool = Field(default=True, validation_alias="ALLOW_MODEL_FALLBACK")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

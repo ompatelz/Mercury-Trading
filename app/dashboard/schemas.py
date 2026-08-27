@@ -32,6 +32,10 @@ class DashboardOverviewResponse(BaseModel):
     system_health: list[ComponentHealth]
 
 
+class ModelRoutingDashboardResponse(BaseModel):
+    usage: list[dict[str, object]]
+
+
 class ExperimentListItem(BaseModel):
     id: UUID
     strategy_name: str

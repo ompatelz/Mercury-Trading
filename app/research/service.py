@@ -1,7 +1,14 @@
 from sqlalchemy.orm import Session
 
 from app.agents.service import AgentVersionService
+from app.core.config import get_settings
 from app.memory.service import ResearchMemoryService
+from app.model_routing.client import RoutingResearchModelClient
+from app.model_routing.evidence import EvalEvidenceService
+from app.model_routing.registry import ModelRegistry
+from app.model_routing.schemas import ModelCapability, RoutingPolicy
+from app.model_routing.service import ModelRouter
+from app.model_routing.tracking import ModelUsageService
 from app.models.agent import ResearchTraceEvent
 from app.models.experiment import ResearchExperiment
 from app.research.model_client import ResearchModelClient, RuleBasedResearchModelClient
@@ -16,8 +23,25 @@ class ResearchExperimentService:
         model_client: ResearchModelClient | None = None,
     ) -> None:
         self.session = session
+        self.model_client: ResearchModelClient
         if model_client is None:
-            self.model_client: ResearchModelClient = RuleBasedResearchModelClient()
+            delegate = RuleBasedResearchModelClient()
+            registry = ModelRegistry(
+                [
+                    ModelCapability(
+                        model_id=delegate.model,
+                        provider=delegate.provider,
+                        version="v1",
+                        context_window=0,
+                        supports_structured_output=True,
+                        supports_tools=False,
+                    )
+                ]
+            )
+            policy = RoutingPolicy(get_settings().routing_policy)
+            self.model_client = RoutingResearchModelClient(
+                delegate, ModelRouter(registry, EvalEvidenceService(session).benchmarks()), policy
+            )
         else:
             self.model_client = model_client
 
@@ -89,6 +113,17 @@ class ResearchExperimentService:
         )
         self.session.add(record)
         self.session.flush()
+        if isinstance(self.model_client, RoutingResearchModelClient):
+            usage = ModelUsageService(self.session)
+            for invocation in self.model_client.invocations:
+                usage.record(
+                    invocation.decision,
+                    agent=invocation.agent,
+                    success=invocation.success,
+                    latency_ms=invocation.latency_ms,
+                    research_experiment_id=record.id,
+                    workflow_version_id=workflow_version.id,
+                )
         lesson = memory_service.create_lesson(record)
         self.session.add_all(
             [
