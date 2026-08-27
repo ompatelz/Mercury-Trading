@@ -293,6 +293,8 @@ latency thresholds. The decision and metric differences are stored in
   workflow benchmarks, critical-regression gates, and champion promotion.
 - Campaigns: persisted PostgreSQL job queue, deterministic campaign
   orchestration, temporal splits, ranking, portfolio evaluation.
+- Model routing: task-specific, eval-backed model selection with explainable
+  quality, latency, and cost components plus persisted usage accounting.
 - Quality: pytest, Ruff, mypy, GitHub Actions, Docker.
 
 ## Running Mercury
@@ -505,6 +507,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - [Architecture](docs/architecture.md)
 - [Campaigns](docs/campaigns.md)
+- [Model routing](docs/model_routing.md)
 - [Workers](docs/workers.md)
 - [Optimization](docs/optimization.md)
 - [Walk-forward analysis](docs/walk-forward.md)

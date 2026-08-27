@@ -43,12 +43,13 @@ class CampaignService:
             start_date=request.start_date,
             end_date=request.end_date,
             split_definition=split.as_dict(),
-            budget=budget,
+            budget={**budget, "routing_policy": request.routing_policy},
             budget_used={
                 "experiments": 0,
                 "llm_calls": 0,
                 "runtime_seconds": 0.0,
                 "api_cost": 0.0,
+                "tokens": 0,
                 "optimization_trials": 0,
                 "test_evaluations": 0,
             },
@@ -717,6 +718,8 @@ def _default_budget(raw: dict[str, Any]) -> dict[str, Any]:
     defaults = {
         "max_experiments": 12,
         "max_llm_calls": 0,
+        "max_tokens": 0,
+        "max_llm_cost": 0.0,
         "max_runtime_seconds": 600,
         "max_api_cost": 0.0,
         "max_optimization_trials": 12,
