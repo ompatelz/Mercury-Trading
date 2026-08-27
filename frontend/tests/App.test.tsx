@@ -77,6 +77,37 @@ const datasetVersion = {
   quality_report: { valid: true, issues: [] }
 };
 
+const decision = {
+  id: "decision-1",
+  decision_type: "WORKFLOW_REJECTION",
+  outcome: "REJECTED",
+  actor: "EvalService",
+  reason: "Candidate failed promotion rules",
+  campaign_id: null,
+  experiment_id: null,
+  strategy_id: null,
+  workflow_experiment_id: "workflow-exp-1",
+  correlation_id: "workflow-exp-1",
+  inputs: {},
+  metrics: {},
+  alternatives: [],
+  provenance: {},
+  versions: {},
+  content_hash: "abcdef1234567890",
+  created_at: "2024-02-01T00:00:00Z",
+  rules: [
+    {
+      rule: "TASK_SUCCESS_DELTA",
+      rule_version: "v1",
+      threshold: 0,
+      observed_value: -0.5,
+      passed: false,
+      detail: null
+    }
+  ],
+  integrity: { verified: true, content_hash: "abcdef1234567890" }
+};
+
 describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -84,6 +115,7 @@ describe("App", () => {
       vi.fn((url: string) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
         if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
+        if (url.endsWith("/decisions")) return ok([decision]);
         if (url.includes("/datasets/ds-1/versions")) return ok([datasetVersion]);
         if (url.endsWith("/datasets")) return ok([dataset]);
         if (url.includes("/dashboard/experiments/exp-1")) return ok(detail);
@@ -110,6 +142,7 @@ describe("App", () => {
     expect(await screen.findByText("Measured Result")).toBeInTheDocument();
     expect(screen.getByText("Equity Curve")).toBeInTheDocument();
     expect(await screen.findByTestId("research-data-catalog")).toHaveTextContent("MSFT_1d");
+    expect(await screen.findByTestId("decision-audit")).toHaveTextContent("WORKFLOW_REJECTION");
     expect(screen.getByText("Regime Performance")).toBeInTheDocument();
     expect(screen.getByTestId("regime-weaknesses")).toHaveTextContent(
       "No persisted weakness flags"

@@ -24,6 +24,7 @@ from app.models.data import (
 from app.models.eval import EvalRun, EvalTaskResult, WorkflowCandidateChange, WorkflowExperiment
 from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
+from app.models.governance import DecisionRecord, DecisionRuleEvaluation
 from app.models.market_data import MarketBar
 from app.models.memory import ResearchMemoryLesson
 from app.models.model_routing import ModelUsageCall
@@ -43,6 +44,8 @@ __all__ = [
     "DatasetLineage",
     "DatasetSnapshot",
     "DatasetVersion",
+    "DecisionRecord",
+    "DecisionRuleEvaluation",
     "CampaignExperiment",
     "CampaignJob",
     "EvalRun",

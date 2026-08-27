@@ -211,7 +211,8 @@ tbody tr {
 
 .healthList,
 .activityList,
-.lineage {
+.lineage,
+.decisionList {
   display: grid;
   gap: 8px;
 }
@@ -220,7 +221,8 @@ tbody tr {
 .activityItem,
 .node,
 .lesson,
-.weaknesses {
+.weaknesses,
+.decisionItem {
   border: 1px solid #edf1f2;
   border-radius: 8px;
   padding: 10px;
@@ -235,6 +237,7 @@ tbody tr {
 
 .health p,
 .activityItem small,
+.decisionItem small,
 .lesson p,
 .compare p,
 .empty,
@@ -353,6 +356,55 @@ tbody tr {
   gap: 8px;
 }
 
+.decisionItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.decisionItem strong,
+.decisionItem small {
+  display: block;
+  margin-top: 4px;
+}
+
+.decisionItem span,
+.decisionMeta span,
+.ruleList span {
+  color: #5c6d74;
+  font-size: 0.78rem;
+}
+
+.decisionMeta,
+.ruleList {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.decisionMeta span,
+.ruleList span {
+  border-radius: 999px;
+  background: #eef4f5;
+  padding: 4px 8px;
+}
+
+.ruleList {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+
+.ruleList span.passed {
+  color: #245b34;
+  background: #e8f3ec;
+}
+
+.ruleList span.failed {
+  color: #8a2d24;
+  background: #f8e9e7;
+}
+
 .error {
   color: #9b2c2c;
 }
@@ -381,8 +433,13 @@ tbody tr {
   }
 
   .weaknesses,
+  .decisionItem,
   .kv {
     display: grid;
+  }
+
+  .decisionMeta {
+    justify-content: flex-start;
   }
 
   .kv strong {

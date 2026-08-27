@@ -181,6 +181,37 @@ export type WorkflowEvalDashboard = {
   }>;
 };
 
+export type DecisionRule = {
+  rule: string;
+  rule_version: string;
+  threshold: unknown;
+  observed_value: unknown;
+  passed: boolean;
+  detail?: string | null;
+};
+
+export type Decision = {
+  id: string;
+  decision_type: string;
+  outcome: string;
+  actor: string;
+  reason: string;
+  campaign_id?: string | null;
+  experiment_id?: string | null;
+  strategy_id?: string | null;
+  workflow_experiment_id?: string | null;
+  correlation_id: string;
+  inputs: Record<string, unknown>;
+  metrics: Record<string, unknown>;
+  alternatives: Array<Record<string, unknown>>;
+  provenance: Record<string, unknown>;
+  versions: Record<string, unknown>;
+  content_hash: string;
+  created_at: string;
+  rules: DecisionRule[];
+  integrity: { verified?: boolean; content_hash?: string };
+};
+
 export type Dataset = {
   id: string;
   name: string;

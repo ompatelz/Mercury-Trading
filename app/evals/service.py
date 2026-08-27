@@ -15,6 +15,7 @@ from app.evals.benchmarks import (
     BenchmarkTask,
     get_benchmark,
 )
+from app.governance.service import DecisionService
 from app.models.agent import WorkflowChampion, WorkflowVersion
 from app.models.eval import EvalRun, EvalTaskResult, WorkflowExperiment
 
@@ -139,6 +140,7 @@ class EvalService:
         )
         self.session.add(experiment)
         self.session.flush()
+        self._record_workflow_decision(experiment, rules)
         self.session.refresh(experiment)
         return experiment
 
@@ -169,6 +171,18 @@ class EvalService:
             champion.promoted_from_experiment_id = experiment.id
         candidate.status = "champion"
         self.session.flush()
+        DecisionService(self.session).record(
+            decision_type="WORKFLOW_PROMOTION",
+            outcome="PROMOTED",
+            actor="EvalService",
+            reason="Promotion was authorized by a passing workflow experiment.",
+            workflow_experiment_id=experiment.id,
+            correlation_id=str(experiment.id),
+            inputs={"candidate_workflow_version_id": str(candidate.id)},
+            metrics=experiment.comparison,
+            provenance={"workflow_experiment_id": str(experiment.id)},
+            versions={"benchmark": experiment.benchmark_version, "workflow": candidate.version},
+        )
         self.session.refresh(champion)
         return champion
 
@@ -313,6 +327,74 @@ class EvalService:
             "REJECTED",
             "Candidate failed promotion rules: "
             + ", ".join(critical_regressions or ["success, latency, or cost threshold"]),
+        )
+
+    def _record_workflow_decision(
+        self, experiment: WorkflowExperiment, rules: dict[str, Any]
+    ) -> None:
+        comparison = experiment.comparison
+        baseline = comparison["baseline"]
+        candidate = comparison["candidate"]
+        critical = comparison["critical_regressions"]
+        rule_evidence = [
+            {
+                "rule": "TASK_SUCCESS_DELTA",
+                "rule_version": "v1",
+                "threshold": rules["min_task_success_delta"],
+                "observed_value": comparison["task_success_delta"],
+                "passed": comparison["task_success_delta"] >= rules["min_task_success_delta"],
+            },
+            {
+                "rule": "LATENCY_LIMIT",
+                "rule_version": "v1",
+                "threshold": rules["max_latency_increase_pct"],
+                "observed_value": comparison["latency_delta_ms"],
+                "passed": candidate["average_latency_ms"]
+                <= baseline["average_latency_ms"] * (1 + rules["max_latency_increase_pct"]) + 1.0,
+            },
+            {
+                "rule": "COST_LIMIT",
+                "rule_version": "v1",
+                "threshold": rules["max_cost_increase_pct"],
+                "observed_value": comparison["cost_delta"],
+                "passed": candidate["estimated_cost"]
+                <= baseline["estimated_cost"] * (1 + rules["max_cost_increase_pct"]) + 0.000001,
+            },
+            {
+                "rule": "CRITICAL_REGRESSION",
+                "rule_version": "v1",
+                "threshold": "none",
+                "observed_value": critical,
+                "passed": not rules["critical_cases_must_not_regress"] or not critical,
+            },
+        ]
+        DecisionService(self.session).record(
+            decision_type="WORKFLOW_PROMOTION"
+            if experiment.decision == "PROMOTED"
+            else "WORKFLOW_REJECTION",
+            outcome=experiment.decision,
+            actor="EvalService",
+            reason=experiment.reason,
+            rules=rule_evidence,
+            workflow_experiment_id=experiment.id,
+            correlation_id=str(experiment.id),
+            inputs={
+                "baseline_eval_run_id": str(experiment.baseline_eval_run_id),
+                "candidate_eval_run_id": str(experiment.candidate_eval_run_id),
+            },
+            metrics=comparison,
+            alternatives=[
+                {
+                    "workflow_version_id": str(experiment.baseline_workflow_version_id),
+                    "role": "baseline",
+                }
+            ],
+            provenance={
+                "benchmark": experiment.benchmark_name,
+                "baseline_workflow_version_id": str(experiment.baseline_workflow_version_id),
+                "candidate_workflow_version_id": str(experiment.candidate_workflow_version_id),
+            },
+            versions={"benchmark": experiment.benchmark_version, "promotion_rules": "v1"},
         )
 
 

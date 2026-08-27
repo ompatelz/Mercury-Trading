@@ -18,6 +18,7 @@ from app.data.service import DataLineageService
 from app.evolution.schemas import EvolutionRunCreateRequest
 from app.evolution.service import EvolutionService
 from app.experiments.service import ExperimentService
+from app.governance.service import DecisionService
 from app.models.campaign import (
     CampaignExperiment,
     CampaignJob,
@@ -77,6 +78,28 @@ class CampaignService:
         self.session.add(campaign)
         self.session.flush()
         self._plan_campaign(campaign, request)
+        DecisionService(self.session).record(
+            decision_type="CAMPAIGN_PLAN",
+            outcome="PLANNED",
+            actor="CampaignService",
+            reason="Campaign parameter variants and hypotheses were generated within budget.",
+            campaign_id=campaign.id,
+            correlation_id=str(campaign.id),
+            inputs={
+                "symbols": campaign.symbols,
+                "parameter_space": request.parameter_space,
+                "optimization_method": request.optimization_method,
+            },
+            metrics={
+                "planned_experiments": len(self.list_experiments(campaign.id)),
+                "optimization_trials": campaign.budget_used.get("optimization_trials", 0),
+            },
+            provenance={
+                "split_definition": campaign.split_definition,
+                "datasets": campaign.datasets,
+            },
+            versions={"campaign_planner": "v1"},
+        )
         self.session.flush()
         self.session.refresh(campaign)
         return campaign
@@ -119,11 +142,28 @@ class CampaignService:
             if job is not None:
                 jobs.append(job)
         campaign.status = "queued" if jobs else campaign.status
+        if jobs:
+            DecisionService(self.session).record(
+                decision_type="CAMPAIGN_QUEUE",
+                outcome="QUEUED",
+                actor="CampaignService",
+                reason="Planned campaign experiments were queued for deterministic backtests.",
+                campaign_id=campaign.id,
+                correlation_id=str(campaign.id),
+                inputs={"batch_size": batch_size, "job_type": "RUN_BACKTEST"},
+                metrics={
+                    "jobs_queued": len(jobs),
+                    "planned_remaining": max(0, len(pending) - len(jobs)),
+                },
+                provenance={"job_ids": [str(job.id) for job in jobs]},
+                versions={"campaign_state_machine": "v1"},
+            )
         self.session.flush()
         return jobs
 
     def cancel_campaign(self, campaign_id: UUID) -> ResearchCampaign:
         campaign = self._require_campaign(campaign_id)
+        previous_status = campaign.status
         campaign.status = "cancelled"
         for job in self.session.scalars(
             select(CampaignJob).where(
@@ -133,6 +173,22 @@ class CampaignService:
         ):
             job.status = "CANCELLED"
             job.ended_at = _utcnow()
+        DecisionService(self.session).record(
+            decision_type="HUMAN_OVERRIDE",
+            outcome="CANCELLED",
+            actor="CampaignService",
+            reason="Campaign cancellation was requested through the controlled API.",
+            campaign_id=campaign.id,
+            correlation_id=str(campaign.id),
+            inputs={"previous_status": previous_status},
+            metrics={
+                "queued_jobs_cancelled": sum(
+                    1 for job in self.list_jobs(campaign.id) if job.status == "CANCELLED"
+                )
+            },
+            provenance={"action": "cancel_campaign"},
+            versions={"campaign_state_machine": "v1"},
+        )
         self.session.flush()
         self.session.refresh(campaign)
         return campaign
@@ -375,6 +431,35 @@ class CampaignService:
             evolution_run_id=evolution_run_id,
         )
         campaign.status = "completed" if completed else campaign.status
+        DecisionService(self.session).record(
+            decision_type="CAMPAIGN_FINALIZATION",
+            outcome="COMPLETED" if completed else "NO_COMPLETED_EXPERIMENTS",
+            actor="CampaignService",
+            reason="Campaign rankings and locked test evaluations were finalized.",
+            campaign_id=campaign.id,
+            correlation_id=str(campaign.id),
+            inputs={"completed_experiments": [str(experiment.id) for experiment in completed]},
+            metrics={
+                "ranked_candidates": len(rankings),
+                "top_candidate": str(rankings[0].campaign_experiment_id) if rankings else None,
+                "budget_used": campaign.budget_used,
+            },
+            alternatives=[
+                {
+                    "campaign_experiment_id": str(ranking.campaign_experiment_id),
+                    "rank": ranking.rank,
+                    "score": ranking.score,
+                    "risk_flags": ranking.risk_flags,
+                }
+                for ranking in sorted(rankings, key=lambda item: item.rank)[:5]
+            ],
+            provenance={
+                "strategy_rankings": "strategy_rankings",
+                "locked_test_split": campaign.split_definition.get("test"),
+                "evolution_run_id": evolution_run_id,
+            },
+            versions={"campaign_ranker": "v1", "portfolio_evaluator": "v1"},
+        )
         self.session.flush()
         self.session.refresh(campaign)
         return campaign
@@ -575,6 +660,44 @@ class CampaignService:
                     "parameters": planned.parameters,
                 },
             ]
+        DecisionService(self.session).record(
+            decision_type="CAMPAIGN_EXPERIMENT_REJECTION"
+            if planned.risk_flags
+            else "CAMPAIGN_EXPERIMENT_ACCEPTANCE",
+            outcome="REJECTED" if planned.risk_flags else "ACCEPTED",
+            actor="CampaignService",
+            reason="Validation backtest failed persisted risk checks."
+            if planned.risk_flags
+            else "Validation backtest completed without persisted risk flags.",
+            campaign_id=campaign.id,
+            experiment_id=validation_experiment.id,
+            correlation_id=str(campaign.id),
+            inputs={
+                "campaign_experiment_id": str(planned.id),
+                "train_experiment_id": str(train_experiment.id),
+                "validation_experiment_id": str(validation_experiment.id),
+                "parameters": planned.parameters,
+            },
+            metrics={
+                "validation": validation_experiment.metrics,
+                "walk_forward": walk_forward,
+                "risk_flags": planned.risk_flags,
+            },
+            provenance={
+                "split_definition": campaign.split_definition,
+                "validation_engine": planned.evaluation.get("validation_engine", {}),
+            },
+            versions={"overfitting_detector": "v1", "campaign_state_machine": "v1"},
+            rules=[
+                {
+                    "rule": "NO_OVERFITTING_FLAGS",
+                    "rule_version": "v1",
+                    "threshold": "no persisted risk flags",
+                    "observed_value": planned.risk_flags,
+                    "passed": not planned.risk_flags,
+                }
+            ],
+        )
 
     def _run_walk_forward_evaluations(
         self,
