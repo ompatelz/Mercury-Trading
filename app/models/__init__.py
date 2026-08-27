@@ -5,6 +5,7 @@ from app.models.agent import (
     WorkflowChampion,
     WorkflowVersion,
 )
+from app.models.alternative_data import ResearchAsset, ResearchUniverse, ResearchUniverseMembership
 from app.models.campaign import (
     CampaignExperiment,
     CampaignJob,
@@ -47,6 +48,9 @@ from app.models.strategy_health import (
 
 __all__ = [
     "AgentVersion",
+    "ResearchAsset",
+    "ResearchUniverse",
+    "ResearchUniverseMembership",
     "BacktestTradeRecord",
     "Dataset",
     "DatasetLineage",
