@@ -8,6 +8,8 @@ from app.research.schemas import (
     StrategySpecification,
 )
 from app.schemas.experiment import BacktestRequest
+from app.strategy_dsl.compiler import compile_strategy
+from app.strategy_dsl.schemas import moving_average_crossover_spec
 
 
 def run_backtest_tool(
@@ -18,6 +20,11 @@ def run_backtest_tool(
     if strategy_spec.symbol.upper() != request.symbol.upper():
         raise ValueError("strategy symbol must match research request symbol")
     parameters = validate_strategy_spec(strategy_spec.strategy, strategy_spec.parameters)
+    # Legacy model output is deterministically translated to the constrained DSL.
+    # The execution plan is built before invoking the existing engine boundary.
+    if strategy_spec.strategy != "moving_average_crossover":
+        raise ValueError("research strategies must map to an approved DSL family")
+    compile_strategy(moving_average_crossover_spec(parameters))
 
     backtest_request = BacktestRequest(
         symbol=request.symbol,
