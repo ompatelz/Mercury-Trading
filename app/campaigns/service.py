@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, object_session
 
+from app.alternative_data.service import AlternativeDataService
 from app.campaigns.optimization import generate_parameter_variants, idempotency_key
 from app.campaigns.overfitting import detect_overfitting
 from app.campaigns.portfolio import evaluate_portfolio
@@ -38,6 +39,12 @@ class CampaignService:
     def create_campaign(self, request: CampaignCreateRequest) -> ResearchCampaign:
         split = build_temporal_split(request.start_date, request.end_date, request.split_definition)
         budget = _default_budget(request.budget)
+        requirements = request.datasets.get("data_requirements", [])
+        if not isinstance(requirements, list) or not all(
+            isinstance(item, str) for item in requirements
+        ):
+            raise ValueError("datasets.data_requirements must be a list of provider names")
+        AlternativeDataService(self.session).require_available_inputs(requirements)
         snapshot = self._validate_snapshot(request.dataset_snapshot_id, request.symbols)
         datasets = dict(request.datasets)
         if snapshot is not None:

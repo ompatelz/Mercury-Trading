@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.alternative_data.service import AlternativeDataService
 from app.data.service import DataLineageService, FeatureStore
 from app.db.session import get_session
 from app.models.data import (
@@ -28,6 +29,12 @@ from app.schemas.data import (
 )
 
 router = APIRouter(tags=["research-data"])
+
+
+@router.get("/data-catalog")
+def data_catalog(session: Annotated[Session, Depends(get_session)]) -> dict[str, object]:
+    """Agent- and dashboard-safe catalog: only persisted inputs are advertised."""
+    return AlternativeDataService(session).catalog()
 
 
 @router.get("/datasets", response_model=list[DatasetResponse])
