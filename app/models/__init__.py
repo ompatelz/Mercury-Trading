@@ -38,6 +38,12 @@ from app.models.production_simulation import ProductionSimulation
 from app.models.regime import MarketRegimeLabel
 from app.models.research_artifact import ResearchArtifact
 from app.models.strategy_dsl import StrategyRecord
+from app.models.strategy_health import (
+    ResearchSchedule,
+    ResearchTrigger,
+    StrategyHealth,
+    StrategyHealthObservation,
+)
 
 __all__ = [
     "AgentVersion",
@@ -74,6 +80,10 @@ __all__ = [
     "StrategyCandidate",
     "StrategyRanking",
     "StrategyRecord",
+    "StrategyHealth",
+    "StrategyHealthObservation",
+    "ResearchSchedule",
+    "ResearchTrigger",
     "VersionComparison",
     "WorkflowVersion",
     "WorkflowChampion",

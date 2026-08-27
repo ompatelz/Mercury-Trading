@@ -512,6 +512,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Optimization](docs/optimization.md)
 - [Walk-forward analysis](docs/walk-forward.md)
 - [Portfolio evaluation](docs/portfolio.md)
+- [Strategy lifecycle and continuous research](docs/strategy_lifecycle.md)
 - [Regime-aware research](docs/regimes.md)
 - [Strategy specifications](docs/strategy-specification.md)
 - [Evolution](docs/evolution.md)

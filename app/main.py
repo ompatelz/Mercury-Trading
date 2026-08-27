@@ -19,6 +19,7 @@ from app.api.routes import (
     research,
     research_artifacts,
     strategies,
+    strategy_health,
     stress_tests,
 )
 from app.core.config import get_settings
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(evolution.router)
     app.include_router(paper_trading.router)
+    app.include_router(strategy_health.router)
     app.include_router(production_simulations.router)
     return app
 
