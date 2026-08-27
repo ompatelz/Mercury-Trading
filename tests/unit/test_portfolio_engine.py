@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from app.campaigns.portfolio import _correlation_stress
 from app.portfolio.engine import PortfolioDefinition, StrategySeries, construct_portfolio
 
 
@@ -46,6 +47,8 @@ def test_compatibility_and_incremental_benefit_are_explainable() -> None:
     assert pair["same_family"] is True
     assert "trade_overlap" in pair
     assert set(result.incremental_benefit) == {"stable", "volatile"}
+    correlation = _correlation_stress(_strategies(), result.weights)
+    assert correlation["volatility_multiplier"] >= 1.0
 
 
 def _definition(method: str, constraints: dict[str, float] | None = None) -> PortfolioDefinition:

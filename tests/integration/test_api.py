@@ -49,6 +49,22 @@ def test_ingest_and_backtest_flow(client: TestClient) -> None:
     assert experiment["run_metadata"]["candles_processed"] == 10
     assert "regime_performance" in experiment["run_metadata"]
 
+    stress_response = client.post(
+        "/stress-tests",
+        json={
+            "experiment_id": experiment["id"],
+            "block_size": 2,
+            "number_of_simulations": 8,
+            "seed": 17,
+        },
+    )
+    assert stress_response.status_code == 201
+    stress = stress_response.json()
+    assert stress["simulation_method"] == "circular_block_bootstrap"
+    assert stress["number_of_simulations"] == 8
+    assert "robustness_score" in stress
+    assert client.get(f"/experiments/{experiment['id']}/stress").json()["seed"] == 17
+
     get_response = client.get(f"/backtests/{experiment['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["id"] == experiment["id"]
@@ -251,7 +267,13 @@ def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None
             "symbols": ["MSFT"],
             "start_date": "2024-01-01",
             "end_date": "2024-01-21",
-            "constraints": {"minimum_trade_count": 0, "max_drawdown": 0.9},
+            "constraints": {
+                "minimum_trade_count": 0,
+                "max_drawdown": 0.9,
+                "require_stress_testing": True,
+                "stress_block_size": 2,
+                "stress_simulations": 8,
+            },
             "split_definition": {
                 "train": {"start": "2024-01-01", "end": "2024-01-08"},
                 "validation": {"start": "2024-01-08", "end": "2024-01-15"},
@@ -283,6 +305,7 @@ def test_campaign_api_queues_worker_jobs_and_reports(client: TestClient) -> None
     ranking_response = client.get(f"/campaigns/{campaign['id']}/rankings")
     assert ranking_response.status_code == 200
     assert ranking_response.json()[0]["rank"] == 1
+    assert "stress_robustness" in ranking_response.json()[0]["component_scores"]
 
     report_response = client.get(f"/campaigns/{campaign['id']}/report")
     assert report_response.status_code == 200
