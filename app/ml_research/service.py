@@ -30,6 +30,7 @@ class MLResearchService:
         preprocessor = fit_preprocessor(train, definition.feature_names)
         transform: Transform
         if definition.preprocessing == "none":
+
             def transform(values: list[MLObservation]) -> FloatArray:
                 return feature_matrix(values, definition.feature_names)
         else:
