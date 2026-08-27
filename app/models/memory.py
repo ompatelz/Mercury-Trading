@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text, func
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -29,6 +29,7 @@ class ResearchMemoryLesson(Base):
     market_regime: Mapped[str] = mapped_column(String(100), nullable=False)
     period_start: Mapped[str] = mapped_column(String(16), nullable=False)
     period_end: Mapped[str] = mapped_column(String(16), nullable=False)
+    available_from: Mapped[date] = mapped_column(Date, nullable=False)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     risk_flags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     failure_reasons: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
