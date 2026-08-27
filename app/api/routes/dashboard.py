@@ -18,6 +18,8 @@ from app.dashboard.service import DashboardService
 from app.db.session import get_session
 from app.evals.service import EvalService
 from app.model_routing.tracking import ModelUsageService
+from app.strategy_health.schemas import StrategyHealthTimelineResponse
+from app.strategy_health.service import StrategyHealthService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -114,6 +116,17 @@ def get_strategy_lineage(
     if lineage is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="strategy not found")
     return lineage
+
+
+@router.get("/strategies/{strategy_id}/lifecycle", response_model=StrategyHealthTimelineResponse)
+def get_strategy_lifecycle(
+    strategy_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> StrategyHealthTimelineResponse:
+    """Dashboard timeline of health evidence, decisions, and research follow-up."""
+    return StrategyHealthTimelineResponse.model_validate(
+        StrategyHealthService(session).timeline(strategy_id)
+    )
 
 
 @router.get("/strategies/compare", response_model=StrategyComparisonResponse)
