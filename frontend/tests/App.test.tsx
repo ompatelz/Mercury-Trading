@@ -56,6 +56,27 @@ const report = {
   markdown_report: "# Experiment Report"
 };
 
+const dataset = {
+  id: "ds-1",
+  name: "MSFT_1d"
+};
+
+const datasetVersion = {
+  id: "dv-1",
+  dataset_id: "ds-1",
+  version: 1,
+  symbols: ["MSFT"],
+  provider: "market_bars_legacy_snapshot",
+  frequency: "1d",
+  start_timestamp: "2024-01-01T00:00:00Z",
+  end_timestamp: "2024-02-01T00:00:00Z",
+  schema_version: "market-bars-v1",
+  row_count: 15,
+  checksum: "abcdef1234567890",
+  adjustment_policy: "unadjusted",
+  quality_report: { valid: true, issues: [] }
+};
+
 describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -63,6 +84,8 @@ describe("App", () => {
       vi.fn((url: string) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
         if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
+        if (url.includes("/datasets/ds-1/versions")) return ok([datasetVersion]);
+        if (url.endsWith("/datasets")) return ok([dataset]);
         if (url.includes("/dashboard/experiments/exp-1")) return ok(detail);
         if (url.includes("/experiments/exp-1/report")) return ok(report);
         if (url.includes("/dashboard/experiments")) {
@@ -86,6 +109,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("Performance")).toBeInTheDocument());
     expect(await screen.findByText("Measured Result")).toBeInTheDocument();
     expect(screen.getByText("Equity Curve")).toBeInTheDocument();
+    expect(await screen.findByTestId("research-data-catalog")).toHaveTextContent("MSFT_1d");
     expect(screen.getByText("Regime Performance")).toBeInTheDocument();
     expect(screen.getByTestId("regime-weaknesses")).toHaveTextContent(
       "No persisted weakness flags"

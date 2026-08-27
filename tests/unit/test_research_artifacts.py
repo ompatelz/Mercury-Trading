@@ -5,7 +5,8 @@ from uuid import UUID
 import pytest
 from sqlalchemy.orm import Session
 
-from app.experiments.service import ExperimentService
+from app.data.service import DataLineageService
+from app.experiments.service import ExperimentService, _bars_to_frame
 from app.models.market_data import MarketBar
 from app.research_artifacts.service import ResearchArtifactService, artifact_to_dict
 from app.schemas.experiment import BacktestRequest
@@ -41,19 +42,52 @@ def test_reproduce_experiment_matches_with_same_data(db_session: Session) -> Non
     assert result["metric_comparisons"]["sharpe_ratio"]["status"] == "match"
 
 
-def test_reproduce_experiment_detects_data_change(db_session: Session) -> None:
+def test_reproduce_experiment_ignores_later_mutable_market_data_change(
+    db_session: Session,
+) -> None:
     _seed_bars(db_session, "MSFT", days=15)
     experiment = ExperimentService(db_session).run_backtest(_request())
     changed_bar = db_session.query(MarketBar).filter_by(symbol="MSFT").first()
     assert changed_bar is not None
     changed_bar.close = Decimal("250")
+    changed_bar.high = Decimal("251")
     db_session.commit()
 
     result = ResearchArtifactService(db_session).reproduce_experiment(experiment.id)
 
+    assert result["match"] is True
+    assert result["status"] == "matched"
+    assert result["blocking_differences"] == []
+
+
+def test_reproduce_experiment_detects_explicit_dataset_version_mismatch(
+    db_session: Session,
+) -> None:
+    _seed_bars(db_session, "MSFT", days=15)
+    experiment = ExperimentService(db_session).run_backtest(_request())
+    changed_bar = db_session.query(MarketBar).filter_by(symbol="MSFT").first()
+    assert changed_bar is not None
+    changed_bar.close = Decimal("250")
+    changed_bar.high = Decimal("251")
+    changed_version = DataLineageService(db_session).create_dataset_version(
+        name="MSFT_1d",
+        bars=_bars_to_frame(list(db_session.query(MarketBar).filter_by(symbol="MSFT"))),
+        provider="test_mutation",
+        frequency="1d",
+        parent_version_id=experiment.dataset_version_id,
+        transformation="test_mutation",
+    )
+    db_session.commit()
+
+    result = ResearchArtifactService(db_session).reproduce_experiment(
+        experiment.id,
+        dataset_version_id=changed_version.id,
+    )
+
     assert result["match"] is False
     assert result["status"] == "mismatch"
-    assert "market_data" in result["blocking_differences"]
+    assert "data_mismatch" in result["blocking_differences"]
+    assert "dataset_version_override" in result["blocking_differences"]
 
 
 def test_markdown_report_separates_measured_result_and_interpretation(

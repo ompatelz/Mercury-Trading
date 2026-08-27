@@ -12,6 +12,15 @@ from app.models.campaign import (
     ResearchCampaign,
     StrategyRanking,
 )
+from app.models.data import (
+    Dataset,
+    DatasetLineage,
+    DatasetSnapshot,
+    DatasetVersion,
+    FeatureDefinition,
+    FeatureMaterialization,
+    FeatureVersion,
+)
 from app.models.eval import EvalRun, EvalTaskResult, WorkflowCandidateChange, WorkflowExperiment
 from app.models.evolution import EvolutionRun, StrategyCandidate
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
@@ -30,12 +39,19 @@ from app.models.research_artifact import ResearchArtifact
 __all__ = [
     "AgentVersion",
     "BacktestTradeRecord",
+    "Dataset",
+    "DatasetLineage",
+    "DatasetSnapshot",
+    "DatasetVersion",
     "CampaignExperiment",
     "CampaignJob",
     "EvalRun",
     "EvalTaskResult",
     "EvolutionRun",
     "Experiment",
+    "FeatureDefinition",
+    "FeatureMaterialization",
+    "FeatureVersion",
     "MarketBar",
     "MarketRegimeLabel",
     "ModelUsageCall",

@@ -14,8 +14,60 @@ def _native_available() -> bool:
             np.array([10.0]), np.array([10.0]), np.array([0.0]), 100.0, 0.0, 0.0
         )
     except TypeError:
-        return False  # A stale local extension; CI always builds the checked-in source first.
+        try:
+            native.run_long_only_execution(
+                [0],
+                np.array([10.0]),
+                np.array([10.0]),
+                np.array([0.0]),
+                100.0,
+                0.0,
+                0.0,
+            )
+        except TypeError:
+            return False
     return True
+
+
+def _checked_in_native_signature_available() -> bool:
+    native = import_module("app.backtesting.native._engine")
+    try:
+        native.run_long_only_execution(
+            np.array([10.0]), np.array([10.0]), np.array([0.0]), 100.0, 0.0, 0.0
+        )
+    except TypeError:
+        return False
+    return True
+
+
+def _run_native_direct(
+    opens: np.ndarray,
+    closes: np.ndarray,
+    positions: np.ndarray,
+    initial_capital: float,
+    transaction_cost_bps: float,
+    slippage_bps: float,
+) -> dict[str, object]:
+    native = import_module("app.backtesting.native._engine")
+    try:
+        return native.run_long_only_execution(
+            opens,
+            closes,
+            positions,
+            initial_capital,
+            transaction_cost_bps,
+            slippage_bps,
+        )
+    except TypeError:
+        return native.run_long_only_execution(
+            list(range(len(opens))),
+            opens,
+            closes,
+            positions,
+            initial_capital,
+            transaction_cost_bps,
+            slippage_bps,
+        )
 
 
 @pytest.mark.skipif(not _native_available(), reason="native extension has not been rebuilt")
@@ -36,17 +88,17 @@ def test_native_execution_matches_python_reference() -> None:
     assert native_result.metadata["input_layout"] == "contiguous"
 
 
-@pytest.mark.skipif(not _native_available(), reason="native extension has not been rebuilt")
+@pytest.mark.skipif(
+    not _checked_in_native_signature_available(),
+    reason="checked-in native extension signature has not been rebuilt",
+)
 def test_native_rejects_invalid_prices_and_costs() -> None:
-    native = import_module("app.backtesting.native._engine")
     with pytest.raises(ValueError, match="positive prices"):
-        native.run_long_only_execution(
+        _run_native_direct(
             np.array([10.0, np.nan]), np.array([10.0, 11.0]), np.zeros(2), 100.0, 0.0, 0.0
         )
     with pytest.raises(ValueError, match="non-negative"):
-        native.run_long_only_execution(
-            np.array([10.0]), np.array([10.0]), np.zeros(1), 100.0, -1.0, 0.0
-        )
+        _run_native_direct(np.array([10.0]), np.array([10.0]), np.zeros(1), 100.0, -1.0, 0.0)
 
 
 def test_engine_selection_is_explicit() -> None:

@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   Brain,
+  Database,
   FileJson,
   FlaskConical,
   GitBranch,
@@ -31,11 +32,13 @@ import {
   getOverview,
   getPaperSession,
   getWorkflowEvals,
+  listDatasetCatalog,
   listExperiments,
   reproduceExperiment
 } from "./api";
 import type {
   CampaignDashboard,
+  DatasetCatalogItem,
   DashboardMetric,
   DashboardOverview,
   ExperimentDetail,
@@ -69,6 +72,9 @@ export function App() {
   const [campaign, setCampaign] = useState<LoadState<CampaignDashboard>>({ status: "idle" });
   const [paper, setPaper] = useState<LoadState<PaperSessionDashboard>>({ status: "idle" });
   const [workflowEvals, setWorkflowEvals] = useState<LoadState<WorkflowEvalDashboard>>({ status: "loading" });
+  const [dataCatalog, setDataCatalog] = useState<LoadState<DatasetCatalogItem[]>>({
+    status: "loading"
+  });
   const [filters, setFilters] = useState({ symbol: "", status: "", strategy_family: "" });
   const [ids, setIds] = useState({ strategy: "", campaign: "", paper: "" });
 
@@ -76,6 +82,7 @@ export function App() {
     void refreshOverview();
     void refreshExperiments();
     void refreshWorkflowEvals();
+    void refreshDataCatalog();
     // The initial load should not refetch while users type filters; Apply controls refresh timing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -135,6 +142,15 @@ export function App() {
       });
     } catch (error) {
       setWorkflowEvals({ status: "error", error: (error as Error).message });
+    }
+  }
+
+  async function refreshDataCatalog() {
+    setDataCatalog({ status: "loading" });
+    try {
+      setDataCatalog({ status: "ready", data: await listDatasetCatalog() });
+    } catch (error) {
+      setDataCatalog({ status: "error", error: (error as Error).message });
     }
   }
 
@@ -287,6 +303,49 @@ export function App() {
                 </div>
               ))}
           </div>
+        </Panel>
+      </section>
+
+      <section className="grid">
+        <Panel title="Research Data" icon={<Database size={17} />}>
+          {dataCatalog.status === "ready" ? (
+            dataCatalog.data.length ? (
+              <div className="tableWrap dataCatalog" data-testid="research-data-catalog">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Dataset</th>
+                      <th>Version</th>
+                      <th>Symbols</th>
+                      <th>Rows</th>
+                      <th>Policy</th>
+                      <th>Quality</th>
+                      <th>Checksum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dataCatalog.data.flatMap((dataset) =>
+                      dataset.versions.map((version) => (
+                        <tr key={version.id}>
+                          <td>{dataset.name}</td>
+                          <td>v{version.version}</td>
+                          <td>{version.symbols.join(", ")}</td>
+                          <td>{version.row_count}</td>
+                          <td>{version.adjustment_policy}</td>
+                          <td>{version.quality_report.valid === false ? "failed" : "passed"}</td>
+                          <td>{version.checksum.slice(0, 12)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="empty">No immutable datasets have been created yet.</p>
+            )
+          ) : (
+            <StateBlock state={dataCatalog.status} error={dataCatalog.error} label="research data" />
+          )}
         </Panel>
       </section>
 

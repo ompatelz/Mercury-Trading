@@ -1,6 +1,6 @@
 import pytest
 
-from app.model_routing.execution import FallbackExecutor
+from app.model_routing.execution import EscalationPolicy, FallbackExecutor
 from app.model_routing.registry import ModelRegistry
 from app.model_routing.schemas import (
     ModelBenchmark,
@@ -82,6 +82,19 @@ def test_fallback_is_explicit_and_stops_at_backup() -> None:
     )
     assert output == "ok"
     assert errors == ["primary: ConnectionError"]
+
+
+def test_escalation_requires_a_named_failure_condition() -> None:
+    policy = EscalationPolicy(minimum_confidence=0.8)
+    assert policy.should_escalate(schema_valid=True, tool_succeeded=True, confidence=0.9) is None
+    assert (
+        policy.should_escalate(schema_valid=False, tool_succeeded=True)
+        == "schema_validation_failed"
+    )
+    assert (
+        policy.should_escalate(schema_valid=True, tool_succeeded=True, confidence=0.7)
+        == "confidence_below_threshold"
+    )
 
 
 def test_usage_tracking_persists_explainable_cost(db_session) -> None:

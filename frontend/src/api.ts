@@ -1,5 +1,8 @@
 import type {
   CampaignDashboard,
+  Dataset,
+  DatasetCatalogItem,
+  DatasetVersion,
   DashboardOverview,
   ExperimentDetail,
   ExperimentList,
@@ -68,4 +71,14 @@ export function getPaperSession(id: string): Promise<PaperSessionDashboard> {
 
 export function getWorkflowEvals(): Promise<WorkflowEvalDashboard> {
   return getJson("/dashboard/evals");
+}
+
+export async function listDatasetCatalog(): Promise<DatasetCatalogItem[]> {
+  const datasets = await getJson<Dataset[]>("/datasets");
+  return Promise.all(
+    datasets.map(async (dataset) => ({
+      ...dataset,
+      versions: await getJson<DatasetVersion[]>(`/datasets/${dataset.id}/versions`)
+    }))
+  );
 }

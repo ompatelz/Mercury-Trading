@@ -40,6 +40,10 @@ class ResearchCampaign(Base):
     rejected_strategies: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     final_conclusions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     stop_conditions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    dataset_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dataset_snapshots.id", ondelete="RESTRICT"), nullable=True
+    )
+    feature_set: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

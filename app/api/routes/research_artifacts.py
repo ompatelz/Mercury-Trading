@@ -32,9 +32,12 @@ def get_experiment_report(
 def reproduce_experiment(
     experiment_id: UUID,
     session: Annotated[Session, Depends(get_session)],
+    dataset_version_id: UUID | None = None,
 ) -> dict[str, object]:
     try:
-        return ResearchArtifactService(session).reproduce_experiment(experiment_id)
+        return ResearchArtifactService(session).reproduce_experiment(
+            experiment_id, dataset_version_id=dataset_version_id
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 

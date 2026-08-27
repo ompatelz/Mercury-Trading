@@ -180,3 +180,28 @@ export type WorkflowEvalDashboard = {
     created_at: string;
   }>;
 };
+
+export type Dataset = {
+  id: string;
+  name: string;
+};
+
+export type DatasetVersion = {
+  id: string;
+  dataset_id: string;
+  version: number;
+  symbols: string[];
+  provider: string;
+  frequency: string;
+  start_timestamp: string;
+  end_timestamp: string;
+  schema_version: string;
+  row_count: number;
+  checksum: string;
+  adjustment_policy: string;
+  quality_report: { valid?: boolean; issues?: Array<Record<string, unknown>> };
+};
+
+export type DatasetCatalogItem = Dataset & {
+  versions: DatasetVersion[];
+};

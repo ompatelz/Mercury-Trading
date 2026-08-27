@@ -76,6 +76,50 @@ def test_ingest_and_backtest_flow(client: TestClient) -> None:
     assert reproduce_response.status_code == 200
     assert reproduce_response.json()["match"] is True
 
+    datasets_response = client.get("/datasets")
+    assert datasets_response.status_code == 200
+    dataset = datasets_response.json()[0]
+
+    versions_response = client.get(f"/datasets/{dataset['id']}/versions")
+    assert versions_response.status_code == 200
+    dataset_version = versions_response.json()[0]
+    assert dataset_version["id"] == experiment["dataset_version_id"]
+    assert dataset_version["quality_report"]["valid"] is True
+
+    lineage_response = client.get(f"/datasets/{dataset['id']}/lineage")
+    assert lineage_response.status_code == 200
+    assert lineage_response.json()[0]["child_dataset_version_id"] == dataset_version["id"]
+
+    feature_response = client.post(
+        "/features",
+        json={
+            "name": "close_return",
+            "version": "v1",
+            "implementation": "returns",
+            "lookback": 1,
+        },
+    )
+    assert feature_response.status_code == 201
+    feature_version = feature_response.json()
+
+    materialized_response = client.post(
+        f"/features/{feature_version['id']}/materialize",
+        json={"dataset_version_id": dataset_version["id"]},
+    )
+    assert materialized_response.status_code == 200
+    assert materialized_response.json()["row_count"] == dataset_version["row_count"]
+
+    snapshot_response = client.post(
+        "/datasets/snapshots",
+        json={
+            "name": "api-snapshot",
+            "dataset_version_ids": [dataset_version["id"]],
+            "feature_set": [{"feature_version_id": feature_version["id"]}],
+        },
+    )
+    assert snapshot_response.status_code == 201
+    assert snapshot_response.json()["universe"] == ["MSFT"]
+
 
 def test_regime_and_evolution_api_flow(client: TestClient) -> None:
     ingest_response = client.post(

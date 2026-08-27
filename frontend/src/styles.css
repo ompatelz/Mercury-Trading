@@ -177,6 +177,10 @@ h3 {
   border-radius: 8px;
 }
 
+.dataCatalog {
+  max-height: 260px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

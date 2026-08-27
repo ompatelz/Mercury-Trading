@@ -13,17 +13,22 @@ class CampaignCreateRequest(BaseModel):
     interval: str = "1d"
     constraints: dict[str, Any] = Field(default_factory=dict)
     datasets: dict[str, Any] = Field(default_factory=dict)
+    dataset_snapshot_id: UUID | None = None
+    feature_set: list[dict[str, Any]] = Field(default_factory=list)
     split_definition: dict[str, dict[str, str]] | None = None
     budget: dict[str, Any] = Field(
         default_factory=lambda: {
             "max_experiments": 12,
             "max_optimization_trials": 12,
             "max_llm_calls": 0,
+            "max_tokens": 0,
+            "max_llm_cost": 0.0,
             "max_runtime_seconds": 600,
             "max_api_cost": 0.0,
         }
     )
     parameter_space: dict[str, Any] | None = None
+    routing_policy: str = "balanced"
     optimization_method: str = "grid"
     optimization_seed: int = 17
     stop_conditions: dict[str, Any] = Field(
@@ -40,6 +45,8 @@ class CampaignCreateRequest(BaseModel):
             raise ValueError("start_date must be before end_date")
         if self.optimization_method not in {"grid", "random", "bayesian"}:
             raise ValueError("optimization_method must be grid, random, or bayesian")
+        if self.routing_policy not in {"fast", "balanced", "high_quality"}:
+            raise ValueError("routing_policy must be fast, balanced, or high_quality")
         return self
 
 

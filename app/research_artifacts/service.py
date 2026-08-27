@@ -1,15 +1,18 @@
 from typing import Any
 from uuid import UUID
 
+import polars as pl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backtesting.engine import run_moving_average_backtest
-from app.experiments.service import _bars_to_frame
+from app.data.service import DataLineageService, DataQualityError
+from app.experiments.service import _bars_to_frame, _filter_frame_window, _frame_to_bars
 from app.market_data.repository import MarketDataRepository
 from app.models.agent import ResearchTraceEvent
 from app.models.campaign import CampaignExperiment, ResearchCampaign, StrategyRanking
 from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExperiment
+from app.models.market_data import MarketBar
 from app.models.memory import ResearchMemoryLesson
 from app.models.research_artifact import ResearchArtifact
 from app.research_artifacts.fingerprints import (
@@ -81,15 +84,52 @@ class ResearchArtifactService:
         self.session.refresh(artifact)
         return artifact
 
-    def reproduce_experiment(self, experiment_id: UUID) -> dict[str, Any]:
+    def reproduce_experiment(
+        self, experiment_id: UUID, dataset_version_id: UUID | None = None
+    ) -> dict[str, Any]:
         experiment = self._require_experiment(experiment_id)
-        bars = self.market_data.list_bars(
-            symbol=experiment.symbol,
-            interval=experiment.data_interval,
-            start=experiment.start_date,
-            end=experiment.end_date,
-        )
-        if not bars:
+        data_lineage = DataLineageService(self.session)
+        source_dataset_version_id = dataset_version_id or experiment.dataset_version_id
+        bars: list[MarketBar] = []
+        frame: pl.DataFrame | None = None
+        current_data_fingerprint: str | None = None
+        try:
+            if source_dataset_version_id is not None:
+                dataset_version = data_lineage.require_version(source_dataset_version_id)
+                frame = _filter_frame_window(
+                    data_lineage.bars_for_version(dataset_version.id),
+                    symbol=experiment.symbol,
+                    start=experiment.start_date,
+                    end=experiment.end_date,
+                )
+                bars = _frame_to_bars(frame)
+                current_data_fingerprint = config_fingerprint(
+                    {
+                        "dataset_checksum": dataset_version.checksum,
+                        "schema_version": dataset_version.schema_version,
+                        "feature_versions": experiment.feature_versions,
+                    }
+                )
+            else:
+                bars = self.market_data.list_bars(
+                    symbol=experiment.symbol,
+                    interval=experiment.data_interval,
+                    start=experiment.start_date,
+                    end=experiment.end_date,
+                )
+                frame = _bars_to_frame(bars) if bars else None
+                current_data_fingerprint = (
+                    config_fingerprint(market_data_fingerprint(bars)) if bars else None
+                )
+        except DataQualityError as exc:
+            return {
+                "experiment_id": str(experiment.id),
+                "status": "failed",
+                "match": False,
+                "blocking_differences": [str(exc)],
+                "metric_comparisons": {},
+            }
+        if not bars or frame is None:
             return {
                 "experiment_id": str(experiment.id),
                 "status": "failed",
@@ -99,14 +139,17 @@ class ResearchArtifactService:
             }
 
         original_repro = _dict_value(experiment.run_metadata, "reproducibility")
-        current_data_fingerprint = market_data_fingerprint(bars)
-        expected_data_fingerprint = _dict_value(original_repro, "data_fingerprint")
+        expected_data_fingerprint = experiment.data_fingerprint or _dict_value(
+            _dict_value(original_repro, "dataset"), "fingerprint"
+        )
         config = _experiment_config(experiment)
         expected_config_fingerprint = original_repro.get("configuration_fingerprint")
         current_config_fingerprint = config_fingerprint(config)
         changed_inputs = []
         if expected_data_fingerprint and expected_data_fingerprint != current_data_fingerprint:
-            changed_inputs.append("market_data")
+            changed_inputs.append("data_mismatch")
+        if dataset_version_id is not None and dataset_version_id != experiment.dataset_version_id:
+            changed_inputs.append("dataset_version_override")
         if (
             expected_config_fingerprint
             and expected_config_fingerprint != current_config_fingerprint
@@ -120,7 +163,7 @@ class ResearchArtifactService:
             changed_inputs.append("environment")
 
         result = run_moving_average_backtest(
-            bars=_bars_to_frame(bars),
+            bars=frame,
             short_window=int(experiment.parameters["short_window"]),
             long_window=int(experiment.parameters["long_window"]),
             initial_capital=float(experiment.parameters.get("initial_capital", 10_000.0)),
@@ -143,6 +186,9 @@ class ResearchArtifactService:
                 "configuration": config,
                 "configuration_fingerprint": current_config_fingerprint,
                 "data_fingerprint": current_data_fingerprint,
+                "dataset_version_id": str(source_dataset_version_id)
+                if source_dataset_version_id
+                else None,
                 "backtester_version": BACKTESTER_VERSION,
                 "strategy_version": STRATEGY_VERSION,
                 "commit": current_commit(),
