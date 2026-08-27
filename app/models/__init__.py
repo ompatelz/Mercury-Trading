@@ -28,6 +28,7 @@ from app.models.experiment import BacktestTradeRecord, Experiment, ResearchExper
 from app.models.governance import DecisionRecord, DecisionRuleEvaluation
 from app.models.market_data import MarketBar
 from app.models.memory import ResearchMemoryLesson
+from app.models.ml import MLModel, MLPrediction
 from app.models.model_routing import ModelUsageCall
 from app.models.paper_trading import (
     PaperFillRecord,
@@ -68,6 +69,8 @@ __all__ = [
     "FeatureMaterialization",
     "FeatureVersion",
     "MarketBar",
+    "MLModel",
+    "MLPrediction",
     "MarketRegimeLabel",
     "ModelUsageCall",
     "PaperFillRecord",
