@@ -79,3 +79,22 @@ def test_research_workflow_retrieves_prior_memory_before_generation(db_session: 
     retrieved = second.workflow_metadata["retrieved_memory"][0]
     assert retrieved["source_experiment_id"]
     assert "moving_average_crossover" in retrieved["tags"]
+
+
+def test_memory_is_unavailable_before_source_experiment_end(db_session: Session) -> None:
+    _seed_bars(db_session)
+    experiment = ResearchExperimentService(
+        db_session, RuleBasedResearchModelClient()
+    ).run_research_experiment(_request())
+    db_session.commit()
+
+    service = ResearchMemoryService(db_session)
+    assert (
+        service.search(
+            MemorySearchRequest(query="trend methodology", symbol="MSFT", as_of="2024-01-10")
+        )
+        == []
+    )
+    assert service.search(
+        MemorySearchRequest(query="trend methodology", symbol="MSFT", as_of=experiment.end_date)
+    )

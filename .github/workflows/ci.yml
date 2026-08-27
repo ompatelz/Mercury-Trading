@@ -32,6 +32,8 @@ jobs:
         run: pytest
       - name: Deterministic paper trading replay
         run: pytest tests/unit/test_paper_trading.py tests/integration/test_api.py
+      - name: Deterministic execution-model contracts
+        run: pytest tests/unit/test_paper_trading.py -k "quote_execution or microstructure or larger_participation or latency"
 
   frontend:
     name: Research Dashboard Frontend
