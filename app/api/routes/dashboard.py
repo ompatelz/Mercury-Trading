@@ -9,6 +9,7 @@ from app.dashboard.schemas import (
     DashboardOverviewResponse,
     ExperimentDetailResponse,
     ExperimentListResponse,
+    ModelRoutingDashboardResponse,
     PaperTradingDashboardResponse,
     StrategyComparisonResponse,
     StrategyLineageResponse,
@@ -16,6 +17,7 @@ from app.dashboard.schemas import (
 from app.dashboard.service import DashboardService
 from app.db.session import get_session
 from app.evals.service import EvalService
+from app.model_routing.tracking import ModelUsageService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -39,6 +41,13 @@ def get_dashboard_evals(
             for item in service.list_experiments()
         ]
     }
+
+
+@router.get("/model-routing", response_model=ModelRoutingDashboardResponse)
+def get_model_routing_dashboard(
+    session: Annotated[Session, Depends(get_session)],
+) -> ModelRoutingDashboardResponse:
+    return ModelRoutingDashboardResponse(usage=ModelUsageService(session).summary())
 
 
 @router.get("/overview", response_model=DashboardOverviewResponse)
