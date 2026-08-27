@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from datetime import date as Date
 from decimal import Decimal
 
 import polars as pl
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.backtesting.backends import get_backtest_engine
 from app.core.config import get_settings
+from app.data.service import DataLineageService, FeatureStore
 from app.market_data.repository import MarketDataRepository
 from app.models.experiment import BacktestTradeRecord, Experiment
 from app.models.market_data import MarketBar
@@ -29,16 +31,48 @@ class ExperimentService:
         self.market_data = MarketDataRepository(session)
 
     def run_backtest(self, request: BacktestRequest) -> Experiment:
-        bars = self.market_data.list_bars(
-            symbol=request.symbol,
-            interval=request.interval,
-            start=request.start,
-            end=request.end,
-        )
-        if not bars:
-            raise ValueError("no market bars found; ingest market data before running a backtest")
-
-        frame = _bars_to_frame(bars)
+        data_lineage = DataLineageService(self.session)
+        if request.dataset_version_id is not None:
+            dataset_version = data_lineage.require_version(request.dataset_version_id)
+            version_frame = data_lineage.bars_for_version(dataset_version.id)
+            frame = _filter_frame_window(
+                version_frame,
+                symbol=request.symbol,
+                start=request.start,
+                end=request.end,
+            )
+            if frame.is_empty():
+                raise ValueError("dataset version does not match requested symbol")
+            bars = _frame_to_bars(frame)
+        else:
+            bars = self.market_data.list_bars(
+                symbol=request.symbol,
+                interval=request.interval,
+                start=request.start,
+                end=request.end,
+            )
+            if not bars:
+                raise ValueError(
+                    "no market bars found; ingest market data before running a backtest"
+                )
+            frame = _bars_to_frame(bars)
+            dataset_version = data_lineage.version_for_bars(
+                name=f"{request.symbol.upper()}_{request.interval}",
+                bars=frame,
+                provider="market_bars_legacy_snapshot",
+                frequency=request.interval,
+            )
+        feature_store = FeatureStore(self.session)
+        feature_versions = []
+        for feature_version_id in request.feature_version_ids:
+            feature_frame = feature_store.compute(dataset_version.id, feature_version_id)
+            feature_versions.append(
+                {
+                    "feature_version_id": str(feature_version_id),
+                    "dataset_version_id": str(dataset_version.id),
+                    "row_count": feature_frame.height,
+                }
+            )
         parameters = {
             "short_window": request.short_window,
             "long_window": request.long_window,
@@ -57,6 +91,13 @@ class ExperimentService:
             "random_seed": None,
         }
         data_fingerprint = market_data_fingerprint(bars)
+        immutable_fingerprint = config_fingerprint(
+            {
+                "dataset_checksum": dataset_version.checksum,
+                "schema_version": dataset_version.schema_version,
+                "feature_versions": feature_versions,
+            }
+        )
         engine = get_backtest_engine(get_settings().backtest_engine)
         result = engine.run_moving_average(
             frame,
@@ -99,6 +140,15 @@ class ExperimentService:
                     "configuration": reproducibility_config,
                     "configuration_fingerprint": config_fingerprint(reproducibility_config),
                     "data_fingerprint": data_fingerprint,
+                    "dataset": {
+                        "id": str(dataset_version.dataset_id),
+                        "version_id": str(dataset_version.id),
+                        "version": dataset_version.version,
+                        "checksum": dataset_version.checksum,
+                        "schema_version": dataset_version.schema_version,
+                        "fingerprint": immutable_fingerprint,
+                    },
+                    "feature_versions": feature_versions,
                     "backtester_version": BACKTESTER_VERSION,
                     "strategy_version": STRATEGY_VERSION,
                     "workflow_version": None,
@@ -118,6 +168,9 @@ class ExperimentService:
                 "regime_transitions": summarize_transitions(regime_observations),
             },
             error_message=None,
+            dataset_version_id=dataset_version.id,
+            feature_versions=feature_versions,
+            data_fingerprint=immutable_fingerprint,
         )
         self.session.add(experiment)
         self.session.flush()
@@ -161,7 +214,13 @@ def _bars_to_frame(bars: list[MarketBar]) -> pl.DataFrame:
     return pl.DataFrame(
         [
             {
-                "timestamp": bar.timestamp,
+                "timestamp": (
+                    bar.timestamp.replace(tzinfo=UTC)
+                    if bar.timestamp.tzinfo is None
+                    else bar.timestamp.astimezone(UTC)
+                ),
+                "symbol": bar.symbol,
+                "interval": bar.interval,
                 "open": float(bar.open),
                 "high": float(bar.high),
                 "low": float(bar.low),
@@ -170,4 +229,30 @@ def _bars_to_frame(bars: list[MarketBar]) -> pl.DataFrame:
             }
             for bar in bars
         ]
+    ).sort("timestamp")
+
+
+def _frame_to_bars(frame: pl.DataFrame) -> list[MarketBar]:
+    return [
+        MarketBar(
+            symbol=str(row["symbol"]),
+            timestamp=_coerce_timestamp(row["timestamp"]),
+            interval=str(row["interval"]),
+            open=Decimal(str(row["open"])),
+            high=Decimal(str(row["high"])),
+            low=Decimal(str(row["low"])),
+            close=Decimal(str(row["close"])),
+            volume=int(row["volume"]),
+        )
+        for row in frame.to_dicts()
+    ]
+
+
+def _filter_frame_window(
+    frame: pl.DataFrame, *, symbol: str, start: Date, end: Date
+) -> pl.DataFrame:
+    return frame.filter(
+        (pl.col("symbol") == symbol.upper())
+        & (pl.col("timestamp").dt.date() >= start)
+        & (pl.col("timestamp").dt.date() < end)
     ).sort("timestamp")

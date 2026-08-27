@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.campaigns.optimization import generate_parameter_variants, idempotency_key
 from app.campaigns.overfitting import detect_overfitting
@@ -14,6 +14,7 @@ from app.campaigns.ranking import score_experiment
 from app.campaigns.schemas import CampaignCreateRequest
 from app.campaigns.splits import build_temporal_split
 from app.campaigns.walk_forward import aggregate_walk_forward, build_walk_forward_windows
+from app.data.service import DataLineageService
 from app.evolution.schemas import EvolutionRunCreateRequest
 from app.evolution.service import EvolutionService
 from app.experiments.service import ExperimentService
@@ -24,6 +25,7 @@ from app.models.campaign import (
     ResearchCampaign,
     StrategyRanking,
 )
+from app.models.data import DatasetSnapshot
 from app.schemas.experiment import BacktestRequest
 
 
@@ -34,10 +36,21 @@ class CampaignService:
     def create_campaign(self, request: CampaignCreateRequest) -> ResearchCampaign:
         split = build_temporal_split(request.start_date, request.end_date, request.split_definition)
         budget = _default_budget(request.budget)
+        snapshot = self._validate_snapshot(request.dataset_snapshot_id, request.symbols)
+        datasets = dict(request.datasets)
+        if snapshot is not None:
+            datasets = {
+                **datasets,
+                "dataset_snapshot_id": str(snapshot.id),
+                "dataset_snapshot_fingerprint": snapshot.fingerprint,
+                "dataset_snapshot_universe": snapshot.universe,
+            }
         campaign = ResearchCampaign(
             objective=request.objective,
             constraints=request.constraints,
-            datasets=request.datasets,
+            datasets=datasets,
+            dataset_snapshot_id=request.dataset_snapshot_id,
+            feature_set=request.feature_set,
             symbols=[symbol.upper() for symbol in request.symbols],
             interval=request.interval,
             start_date=request.start_date,
@@ -620,6 +633,22 @@ class CampaignService:
             raise ValueError("job not found")
         return job
 
+    def _validate_snapshot(
+        self, snapshot_id: UUID | None, symbols: list[str]
+    ) -> DatasetSnapshot | None:
+        if snapshot_id is None:
+            return None
+        snapshot = self.session.get(DatasetSnapshot, snapshot_id)
+        if snapshot is None:
+            raise ValueError("dataset snapshot not found")
+        requested = {symbol.upper() for symbol in symbols}
+        missing = sorted(requested - set(snapshot.universe))
+        if missing:
+            raise ValueError(f"dataset snapshot is missing symbols: {missing}")
+        for version_id in snapshot.dataset_version_ids:
+            DataLineageService(self.session).require_version(UUID(str(version_id)))
+        return snapshot
+
     def _database_now(self) -> datetime:
         now = _utcnow()
         if self.session.bind is not None and self.session.bind.dialect.name == "sqlite":
@@ -711,7 +740,37 @@ def _backtest_request(
         initial_capital=float(campaign.constraints.get("initial_capital", 10_000.0)),
         transaction_cost_bps=float(campaign.constraints.get("transaction_cost_bps", 1.0)),
         slippage_bps=float(campaign.constraints.get("slippage_bps", 0.0)),
+        dataset_version_id=_snapshot_version_id_for_symbol(campaign, planned.symbol),
+        feature_version_ids=_feature_version_ids(campaign.feature_set),
     )
+
+
+def _snapshot_version_id_for_symbol(campaign: ResearchCampaign, symbol: str) -> UUID | None:
+    if campaign.dataset_snapshot_id is None:
+        return None
+    session = object_session(campaign)
+    if session is None:
+        raise ValueError("campaign is not attached to a database session")
+    service = DataLineageService(session)
+    snapshot = service.session.get(DatasetSnapshot, campaign.dataset_snapshot_id)
+    if snapshot is None:
+        raise ValueError("dataset snapshot not found")
+    requested = symbol.upper()
+    for raw_version_id in snapshot.dataset_version_ids:
+        version_id = UUID(str(raw_version_id))
+        version = service.require_version(version_id)
+        if requested in version.symbols and version.frequency == campaign.interval:
+            return version.id
+    raise ValueError(f"dataset snapshot has no {campaign.interval} version for {requested}")
+
+
+def _feature_version_ids(feature_set: list[dict[str, Any]]) -> list[UUID]:
+    ids: list[UUID] = []
+    for item in feature_set:
+        raw = item.get("feature_version_id") or item.get("id")
+        if raw is not None:
+            ids.append(UUID(str(raw)))
+    return ids
 
 
 def _default_budget(raw: dict[str, Any]) -> dict[str, Any]:

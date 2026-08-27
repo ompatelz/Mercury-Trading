@@ -5,6 +5,7 @@ from app.api.routes import (
     backtests,
     campaigns,
     dashboard,
+    data,
     evals,
     evolution,
     health,
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(live.router)
     app.include_router(market_data.router)
+    app.include_router(data.router)
     app.include_router(backtests.router)
     app.include_router(research.router)
     app.include_router(research_artifacts.router)

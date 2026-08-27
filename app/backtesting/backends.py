@@ -80,6 +80,7 @@ class CppBacktestEngine:
         raw = cast(
             dict[str, object],
             native.run_long_only_execution(
+                prepared.get_column("timestamp").to_list(),
                 _contiguous(prepared, "open"),
                 _contiguous(prepared, "close"),
                 _contiguous(prepared, "position"),
@@ -88,16 +89,25 @@ class CppBacktestEngine:
                 slippage_bps,
             ),
         )
-        equity = np.asarray(raw["equity"], dtype=np.float64)
-        equity_curve = prepared.with_columns(
-            pl.Series("cash", np.asarray(raw["cash"], dtype=np.float64)),
-            pl.Series("shares", np.asarray(raw["shares"], dtype=np.float64)),
-            pl.Series("trade_size", np.asarray(raw["trade_size"], dtype=np.float64)),
-            pl.Series("transaction_cost", np.asarray(raw["transaction_cost"], dtype=np.float64)),
-            pl.Series("slippage_cost", np.asarray(raw["slippage_cost"], dtype=np.float64)),
-            pl.Series("equity", equity),
-        ).with_columns(pl.col("equity").pct_change().fill_null(0.0).alias("strategy_return"))
         timestamps = prepared.get_column("timestamp").to_list()
+        if "equity_curve" in raw:
+            equity_curve = pl.DataFrame(cast(list[dict[str, object]], raw["equity_curve"]))
+            equity_curve = equity_curve.with_columns(
+                pl.col("equity").pct_change().fill_null(0.0).alias("strategy_return")
+            )
+            equity = np.asarray(equity_curve.get_column("equity").to_numpy(), dtype=np.float64)
+        else:
+            equity = np.asarray(raw["equity"], dtype=np.float64)
+            equity_curve = prepared.with_columns(
+                pl.Series("cash", np.asarray(raw["cash"], dtype=np.float64)),
+                pl.Series("shares", np.asarray(raw["shares"], dtype=np.float64)),
+                pl.Series("trade_size", np.asarray(raw["trade_size"], dtype=np.float64)),
+                pl.Series(
+                    "transaction_cost", np.asarray(raw["transaction_cost"], dtype=np.float64)
+                ),
+                pl.Series("slippage_cost", np.asarray(raw["slippage_cost"], dtype=np.float64)),
+                pl.Series("equity", equity),
+            ).with_columns(pl.col("equity").pct_change().fill_null(0.0).alias("strategy_return"))
         trades = [_trade(row, timestamps) for row in cast(list[dict[str, object]], raw["trades"])]
         returns, equity_series = (
             equity_curve.get_column("strategy_return"),
@@ -147,10 +157,13 @@ def _contiguous(frame: pl.DataFrame, name: str) -> np.ndarray[tuple[int], np.dty
 
 
 def _trade(row: dict[str, object], timestamps: list[object]) -> BacktestTrade:
-    index = int(cast(int, row["index"]))
+    timestamp = row.get("timestamp")
+    if timestamp is None:
+        index = int(cast(int, row["index"]))
+        timestamp = timestamps[index]
     realized_pnl = row["realized_pnl"]
     return BacktestTrade(
-        cast(str, timestamps[index]),
+        cast(str, timestamp),
         cast(str, row["side"]),
         float(cast(float, row["quantity"])),
         float(cast(float, row["price"])),

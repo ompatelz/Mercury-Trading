@@ -13,6 +13,8 @@ class CampaignCreateRequest(BaseModel):
     interval: str = "1d"
     constraints: dict[str, Any] = Field(default_factory=dict)
     datasets: dict[str, Any] = Field(default_factory=dict)
+    dataset_snapshot_id: UUID | None = None
+    feature_set: list[dict[str, Any]] = Field(default_factory=list)
     split_definition: dict[str, dict[str, str]] | None = None
     budget: dict[str, Any] = Field(
         default_factory=lambda: {

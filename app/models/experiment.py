@@ -28,6 +28,13 @@ class Experiment(Base):
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     run_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dataset_versions.id", ondelete="RESTRICT"), nullable=True
+    )
+    feature_versions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    data_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trades: Mapped[list["BacktestTradeRecord"]] = relationship(
         back_populates="experiment", cascade="all, delete-orphan"
     )

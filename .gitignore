@@ -16,4 +16,5 @@ playwright-report/
 test-results/
 postgres-data/
 results/benchmarks/
+.mercury-data/
 

@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 from app.campaigns.optimization import generate_parameter_variants
 from app.campaigns.schemas import CampaignCreateRequest
 from app.campaigns.service import CampaignService
+from app.data.service import DataLineageService, FeatureStore
+from app.experiments.service import _bars_to_frame
 from app.models.campaign import CampaignJob
+from app.models.experiment import Experiment
 from app.models.market_data import MarketBar
 
 
@@ -64,6 +67,61 @@ def test_campaign_worker_runs_jobs_and_builds_rankings(db_session: Session) -> N
         for window in walk_forward_windows
     )
     assert all(window["uses_locked_test_split"] is False for window in walk_forward_windows)
+
+
+def test_campaign_backtests_inherit_dataset_snapshot_and_features(
+    db_session: Session,
+) -> None:
+    _seed_bars(db_session, symbol="MSFT", days=45)
+    data_version = DataLineageService(db_session).create_dataset_version(
+        name="MSFT_1d",
+        bars=_bars_to_frame(list(db_session.query(MarketBar).filter_by(symbol="MSFT"))),
+        provider="test",
+        frequency="1d",
+    )
+    feature = FeatureStore(db_session).register(
+        name="msft_close_return",
+        version="v1",
+        implementation="returns",
+        lookback=1,
+    )
+    snapshot = DataLineageService(db_session).create_snapshot(
+        "msft-research-snapshot",
+        [data_version.id],
+        feature_set=[{"feature_version_id": str(feature.id)}],
+    )
+    service = CampaignService(db_session)
+
+    campaign = service.create_campaign(
+        CampaignCreateRequest(
+            objective="Can snapshot-locked inputs run through the campaign worker?",
+            symbols=["MSFT"],
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 15),
+            constraints={"minimum_trade_count": 0},
+            budget={"max_experiments": 1, "max_optimization_trials": 1},
+            parameter_space={"short_window": [2], "long_window": [5]},
+            dataset_snapshot_id=snapshot.id,
+            feature_set=snapshot.feature_set,
+        )
+    )
+    service.run_campaign(campaign.id)
+    job = service.process_next_job("test-worker")
+    db_session.commit()
+
+    assert job is not None
+    planned = service.list_experiments(campaign.id)[0]
+    assert planned.experiment_id is not None
+    experiment = db_session.get(Experiment, planned.experiment_id)
+    assert experiment is not None
+    assert experiment.dataset_version_id == data_version.id
+    assert experiment.feature_versions == [
+        {
+            "feature_version_id": str(feature.id),
+            "dataset_version_id": str(data_version.id),
+            "row_count": 45,
+        }
+    ]
 
 
 def test_job_cancellation_and_stale_worker_recovery(db_session: Session) -> None:

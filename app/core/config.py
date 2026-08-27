@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     backtest_engine: str = Field(default="python", validation_alias="BACKTEST_ENGINE")
     routing_policy: str = Field(default="balanced", validation_alias="ROUTING_POLICY")
     allow_model_fallback: bool = Field(default=True, validation_alias="ALLOW_MODEL_FALLBACK")
+    data_storage_root: Path = Field(
+        default=Path(".mercury-data"), validation_alias="DATA_STORAGE_ROOT"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

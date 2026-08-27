@@ -16,6 +16,8 @@ class BacktestRequest(BaseModel):
     initial_capital: float = Field(default=10_000.0, gt=0)
     transaction_cost_bps: float = Field(default=1.0, ge=0)
     slippage_bps: float = Field(default=0.0, ge=0)
+    dataset_version_id: UUID | None = None
+    feature_version_ids: list[UUID] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_windows(self) -> "BacktestRequest":
@@ -41,6 +43,9 @@ class ExperimentResponse(BaseModel):
     metrics: dict[str, Any]
     run_metadata: dict[str, Any]
     error_message: str | None
+    dataset_version_id: UUID | None
+    feature_versions: list[dict[str, Any]]
+    data_fingerprint: str | None
 
     model_config = {"from_attributes": True}
 
