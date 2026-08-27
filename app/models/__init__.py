@@ -34,7 +34,6 @@ from app.models.paper_trading import (
     PaperTraceEventRecord,
     PaperTradingSession,
 )
-from app.models.production_simulation import ProductionSimulation
 from app.models.regime import MarketRegimeLabel
 from app.models.research_artifact import ResearchArtifact
 from app.models.strategy_dsl import StrategyRecord
@@ -64,7 +63,6 @@ __all__ = [
     "PaperOrderRecord",
     "PaperTraceEventRecord",
     "PaperTradingSession",
-    "ProductionSimulation",
     "PortfolioEvaluation",
     "ResearchCampaign",
     "ResearchArtifact",

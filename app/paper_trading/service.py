@@ -1,5 +1,5 @@
 import time
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -25,7 +25,6 @@ from app.paper_trading.events import (
     SignalDirection,
     new_id,
 )
-from app.paper_trading.execution import ExecutionConfig, ExecutionModelName
 from app.paper_trading.portfolio import Portfolio
 from app.paper_trading.risk import RiskConfig, RiskEngine
 from app.paper_trading.schemas import PaperTradingSessionCreateRequest
@@ -56,15 +55,6 @@ class PaperTradingService:
             commission_bps=request.commission_bps,
             slippage_bps=request.slippage_bps,
         )
-        execution_config = ExecutionConfig(
-            model=request.execution_model,
-            spread_model=request.spread_model,
-            fixed_spread_bps=request.fixed_spread_bps,
-            slippage_bps=request.slippage_bps,
-            max_participation_rate=request.max_participation_rate,
-            impact_coefficient_bps=request.impact_coefficient_bps,
-            latency_bars=request.latency_bars,
-        )
         paper_session = PaperTradingSession(
             strategy_name=request.strategy_name,
             strategy_parameters=validated,
@@ -77,7 +67,7 @@ class PaperTradingService:
             initial_cash=Decimal(str(request.initial_cash)),
             commission_bps=request.commission_bps,
             slippage_bps=request.slippage_bps,
-            risk_config=asdict(risk_config) | {"execution": _event_payload(execution_config)},
+            risk_config=asdict(risk_config),
             metrics={},
             final_portfolio={},
             error_message=None,
@@ -91,7 +81,6 @@ class PaperTradingService:
         broker = PaperBroker(
             commission_bps=request.commission_bps,
             slippage_bps=request.slippage_bps,
-            execution_config=execution_config,
         )
         risk = RiskEngine(risk_config)
         strategy = MovingAverageSignalStrategy(
@@ -103,12 +92,6 @@ class PaperTradingService:
         signal_events = 0
         rejected_orders = 0
         filled_orders = 0
-        partial_fills = 0
-        requested_quantity = 0.0
-        filled_quantity = 0.0
-        spread_cost = 0.0
-        impact_cost = 0.0
-        pending_orders: list[tuple[int, OrderEvent]] = []
         try:
             sequence = self._record_event(
                 paper_session.id,
@@ -120,7 +103,6 @@ class PaperTradingService:
             stream = HistoricalReplayStream(session_id=paper_session.id, bars=bars)
             for market_event in stream.events():
                 market_events += 1
-                remaining_liquidity: dict[str, float] = {}
                 sequence = self._record_event(
                     paper_session.id,
                     sequence,
@@ -128,50 +110,6 @@ class PaperTradingService:
                     market_event.timestamp,
                     _event_payload(market_event),
                 )
-                due_orders = [item for item in pending_orders if item[0] <= market_event.sequence]
-                pending_orders = [
-                    item for item in pending_orders if item[0] > market_event.sequence
-                ]
-                for _, pending_order in due_orders:
-                    execution_broker = broker
-                    if execution_config.model == ExecutionModelName.MICROSTRUCTURE:
-                        symbol = pending_order.symbol.upper()
-                        available = remaining_liquidity.setdefault(
-                            symbol,
-                            market_event.volume * execution_config.max_participation_rate,
-                        )
-                        if available <= 0:
-                            pending_orders.append((market_event.sequence + 1, pending_order))
-                            continue
-                        execution_broker = PaperBroker(
-                            commission_bps=request.commission_bps,
-                            slippage_bps=request.slippage_bps,
-                            execution_config=replace(
-                                execution_config,
-                                max_participation_rate=available / market_event.volume,
-                            ),
-                        )
-                    result = execution_broker.execute(pending_order, market_event)
-                    self._persist_order(result.order)
-                    for fill in result.fills:
-                        self._persist_fill(fill)
-                        portfolio.apply_fill(fill)
-                        filled_orders += 1
-                        filled_quantity += fill.quantity
-                        spread_cost += fill.spread_cost
-                        impact_cost += fill.impact_cost
-                        if execution_config.model == ExecutionModelName.MICROSTRUCTURE:
-                            remaining_liquidity[fill.symbol.upper()] -= fill.quantity
-                        sequence = self._record_event(
-                            paper_session.id,
-                            sequence,
-                            EventType.FILL,
-                            fill.timestamp,
-                            _event_payload(fill),
-                        )
-                    if result.order.status == OrderStatus.PARTIALLY_FILLED:
-                        partial_fills += 1
-                        pending_orders.append((market_event.sequence + 1, result.order))
                 portfolio.mark_price(market_event.symbol, market_event.open)
                 signal = strategy.on_market(market_event, portfolio)
                 signal_events += 1
@@ -211,31 +149,17 @@ class PaperTradingService:
                         _event_payload(checked),
                     )
                     if checked.status == OrderStatus.SUBMITTED:
-                        requested_quantity += checked.quantity
-                        if execution_config.latency_bars:
-                            pending_orders.append(
-                                (market_event.sequence + execution_config.latency_bars, checked)
-                            )
-                        else:
-                            result = broker.execute(checked, market_event)
-                            self._persist_order(result.order)
-                            for fill in result.fills:
-                                self._persist_fill(fill)
-                                portfolio.apply_fill(fill)
-                                filled_orders += 1
-                                filled_quantity += fill.quantity
-                                spread_cost += fill.spread_cost
-                                impact_cost += fill.impact_cost
-                                sequence = self._record_event(
-                                    paper_session.id,
-                                    sequence,
-                                    EventType.FILL,
-                                    fill.timestamp,
-                                    _event_payload(fill),
-                                )
-                            if result.order.status == OrderStatus.PARTIALLY_FILLED:
-                                partial_fills += 1
-                                pending_orders.append((market_event.sequence + 1, result.order))
+                        fill = broker.submit_order(checked, market_event.open)
+                        self._persist_fill(fill)
+                        portfolio.apply_fill(fill)
+                        filled_orders += 1
+                        sequence = self._record_event(
+                            paper_session.id,
+                            sequence,
+                            EventType.FILL,
+                            fill.timestamp,
+                            _event_payload(fill),
+                        )
                     else:
                         rejected_orders += 1
 
@@ -259,24 +183,6 @@ class PaperTradingService:
                 "signals": signal_events,
                 "orders": filled_orders + rejected_orders,
                 "fills": filled_orders,
-                "partial_fills": partial_fills,
-                "fill_rate": round(filled_quantity / requested_quantity, 8)
-                if requested_quantity
-                else 1.0,
-                "average_spread_paid": round(spread_cost / filled_quantity, 8)
-                if filled_quantity
-                else 0.0,
-                "estimated_impact": round(impact_cost, 8),
-                "unfilled_quantity": round(
-                    sum(order.quantity - order.filled_quantity for _, order in pending_orders), 8
-                ),
-                "execution": _event_payload(execution_config),
-                "execution_risk_flags": _execution_risk_flags(
-                    fill_rate=filled_quantity / requested_quantity if requested_quantity else 1.0,
-                    partial_fills=partial_fills,
-                    impact_cost=impact_cost,
-                    spread_cost=spread_cost,
-                ),
                 "rejected_orders": rejected_orders,
                 "ending_equity": final_snapshot.equity,
                 "realized_pnl": final_snapshot.realized_pnl,
@@ -309,7 +215,7 @@ class PaperTradingService:
         return paper_session
 
     def _persist_order(self, order: OrderEvent) -> None:
-        self.session.merge(
+        self.session.add(
             PaperOrderRecord(
                 id=order.order_id,
                 session_id=order.session_id,
@@ -317,8 +223,6 @@ class PaperTradingService:
                 symbol=order.symbol,
                 side=order.side.value,
                 quantity=Decimal(str(order.quantity)),
-                filled_quantity=Decimal(str(order.filled_quantity)),
-                average_fill_price=Decimal(str(order.average_fill_price)),
                 status=order.status.value,
                 created_at=order.created_at,
                 rejection_reason=order.reason,
@@ -392,18 +296,3 @@ def _json_safe_value(value: Any) -> Any:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
-
-
-def _execution_risk_flags(
-    *, fill_rate: float, partial_fills: int, impact_cost: float, spread_cost: float
-) -> list[str]:
-    flags: list[str] = []
-    if fill_rate < 0.95:
-        flags.append("LOW_FILL_RATE")
-    if partial_fills:
-        flags.append("LIQUIDITY_DEPENDENCE_HIGH")
-    if impact_cost > 0:
-        flags.append("HIGH_MARKET_IMPACT")
-    if spread_cost > 0:
-        flags.append("SPREAD_SENSITIVITY_HIGH")
-    return flags

@@ -30,7 +30,6 @@ class OrderSide(StrEnum):
 class OrderStatus(StrEnum):
     CREATED = "CREATED"
     SUBMITTED = "SUBMITTED"
-    PARTIALLY_FILLED = "PARTIALLY_FILLED"
     FILLED = "FILLED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
@@ -52,9 +51,6 @@ class MarketEvent:
     close: float
     volume: int
     sequence: int
-    bid: float | None = None
-    ask: float | None = None
-    last_price: float | None = None
 
     @property
     def event_type(self) -> EventType:
@@ -90,10 +86,6 @@ class OrderEvent:
     created_at: datetime
     status: OrderStatus
     reason: str | None = None
-    filled_quantity: float = 0.0
-    average_fill_price: float = 0.0
-    order_type: str = "MARKET"
-    limit_price: float | None = None
 
     @property
     def event_type(self) -> EventType:
@@ -114,8 +106,6 @@ class FillEvent:
     fees: float
     slippage_cost: float
     timestamp: datetime
-    spread_cost: float = 0.0
-    impact_cost: float = 0.0
 
     @property
     def event_type(self) -> EventType:

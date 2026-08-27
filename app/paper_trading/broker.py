@@ -1,56 +1,35 @@
-from app.paper_trading.events import FillEvent, MarketEvent, OrderEvent
-from app.paper_trading.execution import (
-    ExecutionConfig,
-    ExecutionResult,
-    execution_model_for,
-    market_state_from_event,
-)
+from app.paper_trading.events import FillEvent, OrderEvent, OrderSide, OrderStatus, new_id
 
 
 class Broker:
-    def execute(self, order: OrderEvent, market: MarketEvent) -> ExecutionResult:
+    def submit_order(self, order: OrderEvent, market_price: float) -> FillEvent:
         raise NotImplementedError
 
 
 class PaperBroker(Broker):
-    def __init__(
-        self,
-        *,
-        commission_bps: float,
-        slippage_bps: float,
-        execution_config: ExecutionConfig | None = None,
-    ) -> None:
+    def __init__(self, *, commission_bps: float, slippage_bps: float) -> None:
         self.commission_rate = commission_bps / 10_000.0
-        self.execution_config = execution_config or ExecutionConfig(slippage_bps=slippage_bps)
-
-    def execute(self, order: OrderEvent, market: MarketEvent) -> ExecutionResult:
-        result = execution_model_for(self.execution_config).execute(
-            order, market_state_from_event(market, self.execution_config), self.execution_config
-        )
-        fills = tuple(
-            FillEvent(
-                **{**fill.__dict__, "fees": round(fill.gross_notional * self.commission_rate, 8)}
-            )
-            for fill in result.fills
-        )
-        return ExecutionResult(
-            order=result.order, fills=fills, rejected_quantity=result.rejected_quantity
-        )
+        self.slippage_rate = slippage_bps / 10_000.0
 
     def submit_order(self, order: OrderEvent, market_price: float) -> FillEvent:
-        market = MarketEvent(
-            order.session_id,
-            order.created_at,
-            order.symbol,
-            "synthetic",
-            market_price,
-            market_price,
-            market_price,
-            market_price,
-            10**12,
-            0,
+        if order.status != OrderStatus.SUBMITTED:
+            raise ValueError("paper broker only fills submitted orders")
+        signed_slippage = self.slippage_rate if order.side == OrderSide.BUY else -self.slippage_rate
+        fill_price = market_price * (1.0 + signed_slippage)
+        gross_notional = fill_price * order.quantity
+        fees = gross_notional * self.commission_rate
+        slippage_cost = abs(fill_price - market_price) * order.quantity
+        return FillEvent(
+            session_id=order.session_id,
+            fill_id=new_id(),
+            order_id=order.order_id,
+            strategy_id=order.strategy_id,
+            symbol=order.symbol,
+            side=order.side,
+            quantity=order.quantity,
+            price=round(fill_price, 8),
+            gross_notional=round(gross_notional, 8),
+            fees=round(fees, 8),
+            slippage_cost=round(slippage_cost, 8),
+            timestamp=order.created_at,
         )
-        result = self.execute(order, market)
-        if not result.fills:
-            raise ValueError("paper broker could not fill order")
-        return result.fills[0]

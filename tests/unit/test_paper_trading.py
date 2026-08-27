@@ -6,8 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.market_data import MarketBar
 from app.paper_trading.broker import PaperBroker
-from app.paper_trading.events import MarketEvent, OrderEvent, OrderSide, OrderStatus, new_id
-from app.paper_trading.execution import ExecutionConfig, ExecutionModelName
+from app.paper_trading.events import OrderEvent, OrderSide, OrderStatus, new_id
 from app.paper_trading.portfolio import Portfolio
 from app.paper_trading.risk import RiskConfig, RiskEngine
 from app.paper_trading.schemas import PaperTradingSessionCreateRequest
@@ -97,61 +96,6 @@ def test_portfolio_updates_from_fill_events_only() -> None:
     assert portfolio.equity() == 2_100
 
 
-def test_quote_execution_uses_ask_for_buys_and_bid_for_sells() -> None:
-    broker = PaperBroker(
-        commission_bps=0,
-        slippage_bps=0,
-        execution_config=ExecutionConfig(model=ExecutionModelName.BASIC_SLIPPAGE),
-    )
-    market = _market_event(bid=99, ask=101, volume=1_000)
-
-    buy = broker.execute(_order(quantity=1, status=OrderStatus.SUBMITTED), market)
-    sell = broker.execute(
-        _order(quantity=1, side=OrderSide.SELL, status=OrderStatus.SUBMITTED), market
-    )
-
-    assert buy.fills[0].price == 101
-    assert sell.fills[0].price == 99
-
-
-def test_microstructure_execution_partially_fills_and_tracks_average_price() -> None:
-    broker = PaperBroker(
-        commission_bps=0,
-        slippage_bps=0,
-        execution_config=ExecutionConfig(
-            model=ExecutionModelName.MICROSTRUCTURE,
-            max_participation_rate=0.5,
-        ),
-    )
-    order = _order(quantity=10, status=OrderStatus.SUBMITTED)
-
-    first = broker.execute(order, _market_event(bid=99, ask=101, volume=6))
-    second = broker.execute(first.order, _market_event(bid=101, ask=103, volume=20))
-
-    assert first.order.status == OrderStatus.PARTIALLY_FILLED
-    assert first.order.filled_quantity == 3
-    assert second.order.status == OrderStatus.FILLED
-    assert second.order.filled_quantity == 10
-    assert second.order.average_fill_price > 101
-
-
-def test_larger_participation_has_greater_market_impact() -> None:
-    broker = PaperBroker(
-        commission_bps=0,
-        slippage_bps=0,
-        execution_config=ExecutionConfig(
-            model=ExecutionModelName.MICROSTRUCTURE,
-            impact_coefficient_bps=100,
-        ),
-    )
-    market = _market_event(bid=99, ask=101, volume=100)
-
-    small = broker.execute(_order(quantity=1, status=OrderStatus.SUBMITTED), market)
-    large = broker.execute(_order(quantity=81, status=OrderStatus.SUBMITTED), market)
-
-    assert large.fills[0].impact_cost > small.fills[0].impact_cost
-
-
 def test_end_to_end_paper_session_persists_orders_fills_and_portfolio(
     db_session: Session,
 ) -> None:
@@ -178,25 +122,6 @@ def test_end_to_end_paper_session_persists_orders_fills_and_portfolio(
     assert len(result.fills) == 2
     assert result.events[0].event_type == "SESSION"
     assert result.events[-1].payload["status"] == "completed"
-
-
-def test_latency_uses_a_future_replay_event_without_lookahead(db_session: Session) -> None:
-    db_session.add_all(_bars([100, 101, 102, 103, 99, 98], symbol="MSFT"))
-    db_session.commit()
-
-    result = PaperTradingService(db_session).create_session(
-        PaperTradingSessionCreateRequest(
-            symbol="MSFT",
-            start=datetime(2024, 1, 1, tzinfo=UTC).date(),
-            end=datetime(2024, 1, 7, tzinfo=UTC).date(),
-            strategy_parameters={"fast_window": 2, "slow_window": 3},
-            latency_bars=1,
-        )
-    )
-
-    assert result.fills
-    assert result.fills[0].timestamp > result.orders[0].created_at
-    assert result.metrics["execution"]["latency_bars"] == 1
 
 
 def _order(
@@ -232,20 +157,3 @@ def _bars(closes: list[float], *, symbol: str = "MSFT") -> list[MarketBar]:
         )
         for index, close in reversed(list(enumerate(closes)))
     ]
-
-
-def _market_event(*, bid: float, ask: float, volume: int) -> MarketEvent:
-    return MarketEvent(
-        session_id=uuid4(),
-        timestamp=datetime(2024, 1, 2, tzinfo=UTC),
-        symbol="MSFT",
-        interval="1d",
-        open=100,
-        high=101,
-        low=99,
-        close=100,
-        volume=volume,
-        sequence=1,
-        bid=bid,
-        ask=ask,
-    )

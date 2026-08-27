@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +12,6 @@ class MemorySearchRequest(BaseModel):
     market_regime: str | None = Field(default=None, max_length=100)
     failure_type: str | None = Field(default=None, max_length=64)
     top_k: int = Field(default=3, ge=1, le=10)
-    as_of: date | None = None
 
 
 class MemoryLessonResponse(BaseModel):

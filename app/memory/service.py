@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -69,7 +68,6 @@ class ResearchMemoryService:
             market_regime=market_regime,
             period_start=experiment.start_date.isoformat(),
             period_end=experiment.end_date.isoformat(),
-            available_from=experiment.end_date,
             metrics=metrics,
             risk_flags=risk_flags,
             failure_reasons=failure_reasons,
@@ -98,8 +96,6 @@ class ResearchMemoryService:
             statement = statement.where(ResearchMemoryLesson.market_regime == request.market_regime)
         if request.failure_type is not None:
             statement = statement.where(ResearchMemoryLesson.failure_type == request.failure_type)
-        if request.as_of is not None:
-            statement = statement.where(ResearchMemoryLesson.available_from <= request.as_of)
 
         query_embedding = embed_text(request.query)
         ranked = sorted(
@@ -125,7 +121,6 @@ class ResearchMemoryService:
         symbol: str,
         strategy_family: str | None = None,
         top_k: int = 3,
-        as_of: date | None = None,
     ) -> list[RetrievedMemory]:
         search_results = self.search(
             MemorySearchRequest(
@@ -133,7 +128,6 @@ class ResearchMemoryService:
                 symbol=symbol,
                 strategy_family=strategy_family,
                 top_k=top_k,
-                as_of=as_of,
             )
         )
         return [
