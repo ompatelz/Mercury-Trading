@@ -6,7 +6,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from app.paper_trading.events import ExecutionMode
-from app.paper_trading.execution import ExecutionModelName, SpreadModelName
 
 
 class PaperTradingSessionCreateRequest(BaseModel):
@@ -22,12 +21,6 @@ class PaperTradingSessionCreateRequest(BaseModel):
     initial_cash: float = Field(default=10_000.0, gt=0)
     commission_bps: float = Field(default=1.0, ge=0)
     slippage_bps: float = Field(default=0.0, ge=0)
-    execution_model: ExecutionModelName = ExecutionModelName.IDEAL
-    spread_model: SpreadModelName = SpreadModelName.OBSERVED_OR_FIXED
-    fixed_spread_bps: float = Field(default=0.0, ge=0)
-    max_participation_rate: float = Field(default=1.0, gt=0, le=1.0)
-    impact_coefficient_bps: float = Field(default=0.0, ge=0)
-    latency_bars: int = Field(default=0, ge=0)
     target_exposure_pct: float = Field(default=0.95, gt=0, le=1.0)
     max_position_quantity: float = Field(default=1_000_000.0, gt=0)
     max_order_value: float = Field(default=1_000_000.0, gt=0)
@@ -53,12 +46,6 @@ class LivePaperTradingSessionCreateRequest(BaseModel):
     initial_cash: float = Field(default=10_000.0, gt=0)
     commission_bps: float = Field(default=1.0, ge=0)
     slippage_bps: float = Field(default=0.0, ge=0)
-    execution_model: ExecutionModelName = ExecutionModelName.IDEAL
-    spread_model: SpreadModelName = SpreadModelName.OBSERVED_OR_FIXED
-    fixed_spread_bps: float = Field(default=0.0, ge=0)
-    max_participation_rate: float = Field(default=1.0, gt=0, le=1.0)
-    impact_coefficient_bps: float = Field(default=0.0, ge=0)
-    latency_bars: int = Field(default=0, ge=0)
     target_exposure_pct: float = Field(default=0.95, gt=0, le=1.0)
     max_position_quantity: float = Field(default=1_000_000.0, gt=0)
     max_order_value: float = Field(default=1_000_000.0, gt=0)
@@ -121,8 +108,6 @@ class PaperOrderResponse(BaseModel):
     symbol: str
     side: str
     quantity: Decimal
-    filled_quantity: Decimal
-    average_fill_price: Decimal
     status: str
     created_at: datetime
     rejection_reason: str | None

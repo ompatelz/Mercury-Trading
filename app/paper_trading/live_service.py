@@ -24,7 +24,6 @@ from app.paper_trading.events import (
     SignalDirection,
     new_id,
 )
-from app.paper_trading.execution import ExecutionConfig
 from app.paper_trading.monitoring import (
     ComponentHealth,
     ComponentStatus,
@@ -168,15 +167,6 @@ class LiveSessionRunner:
         broker = PaperBroker(
             commission_bps=self.request.commission_bps,
             slippage_bps=self.request.slippage_bps,
-            execution_config=ExecutionConfig(
-                model=self.request.execution_model,
-                spread_model=self.request.spread_model,
-                fixed_spread_bps=self.request.fixed_spread_bps,
-                slippage_bps=self.request.slippage_bps,
-                max_participation_rate=self.request.max_participation_rate,
-                impact_coefficient_bps=self.request.impact_coefficient_bps,
-                latency_bars=self.request.latency_bars,
-            ),
         )
         strategy = MovingAverageSignalStrategy(
             fast_window=self.request.strategy_parameters["fast_window"],
