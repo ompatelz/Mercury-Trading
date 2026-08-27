@@ -59,6 +59,12 @@ class PaperOrderRecord(Base):
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     side: Mapped[str] = mapped_column(String(8), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(24, 10), nullable=False)
+    filled_quantity: Mapped[Decimal] = mapped_column(
+        Numeric(24, 10), nullable=False, default=Decimal("0")
+    )
+    average_fill_price: Mapped[Decimal] = mapped_column(
+        Numeric(18, 6), nullable=False, default=Decimal("0")
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

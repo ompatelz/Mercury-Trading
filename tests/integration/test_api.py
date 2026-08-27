@@ -343,7 +343,10 @@ def test_paper_trading_api_replays_market_data_to_portfolio(client: TestClient) 
 
     orders_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/orders")
     assert orders_response.status_code == 200
-    assert all(order["status"] in {"SUBMITTED", "REJECTED"} for order in orders_response.json())
+    assert all(
+        order["status"] in {"SUBMITTED", "PARTIALLY_FILLED", "FILLED", "REJECTED"}
+        for order in orders_response.json()
+    )
 
     trades_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/trades")
     assert trades_response.status_code == 200
