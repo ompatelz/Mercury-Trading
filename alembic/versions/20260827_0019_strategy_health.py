@@ -1,15 +1,15 @@
 """add deterministic strategy health and research scheduling
 
-Revision ID: 20260827_0018
-Revises: 20260827_0017
+Revision ID: 20260827_0019
+Revises: 20260827_0018
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260827_0018"
-down_revision = "20260827_0017"
+revision = "20260827_0019"
+down_revision = "20260827_0018"
 branch_labels = None
 depends_on = None
 

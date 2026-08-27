@@ -14,6 +14,7 @@ from app.api.routes import (
     market_data,
     memory,
     paper_trading,
+    production_simulations,
     regimes,
     research,
     research_artifacts,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(evolution.router)
     app.include_router(paper_trading.router)
     app.include_router(strategy_health.router)
+    app.include_router(production_simulations.router)
     return app
 
 

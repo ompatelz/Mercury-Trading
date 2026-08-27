@@ -18,10 +18,24 @@ from app.dashboard.service import DashboardService
 from app.db.session import get_session
 from app.evals.service import EvalService
 from app.model_routing.tracking import ModelUsageService
+from app.production_simulation.schemas import ProductionSimulationResponse
 from app.strategy_health.schemas import StrategyHealthTimelineResponse
 from app.strategy_health.service import StrategyHealthService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+@router.get("/simulations/{simulation_id}", response_model=ProductionSimulationResponse)
+def get_dashboard_simulation(
+    simulation_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> ProductionSimulationResponse:
+    from app.production_simulation.service import ProductionSimulationService
+
+    result = ProductionSimulationService(session).get(simulation_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="simulation not found")
+    return ProductionSimulationResponse.model_validate(result)
 
 
 @router.get("/evals")
