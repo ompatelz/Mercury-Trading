@@ -27,6 +27,7 @@ from app.models.campaign import (
 )
 from app.models.data import DatasetSnapshot
 from app.schemas.experiment import BacktestRequest
+from app.stress_testing.service import StressTestService
 
 
 class CampaignService:
@@ -552,6 +553,15 @@ class CampaignService:
             "test_period_locked": campaign.split_definition["test"],
         }
         planned.risk_flags = flags
+        if bool(campaign.constraints.get("require_stress_testing", False)):
+            study = StressTestService(self.session).run(
+                validation_experiment.id,
+                block_size=int(campaign.constraints.get("stress_block_size", 5)),
+                simulations=int(campaign.constraints.get("stress_simulations", 50)),
+                seed=int(campaign.constraints.get("stress_seed", 17)),
+            )
+            planned.evaluation = {**planned.evaluation, "stress_test": study}
+            planned.risk_flags = list(dict.fromkeys([*planned.risk_flags, *study["risk_flags"]]))
         campaign.budget_used = {
             **campaign.budget_used,
             "experiments": int(campaign.budget_used.get("experiments", 0)) + 1,

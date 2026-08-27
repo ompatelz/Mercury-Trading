@@ -8,6 +8,8 @@ def score_experiment(experiment: CampaignExperiment) -> tuple[float, dict[str, f
     drawdown = abs(float(metrics.get("max_drawdown", 0.0)))
     turnover = float(metrics.get("turnover", 0.0))
     trades = float(metrics.get("number_of_trades", 0.0))
+    stress = experiment.evaluation.get("stress_test", {})
+    stress_score = float(stress.get("robustness_score", 100.0))
     flag_penalty = min(0.5, len(experiment.risk_flags) * 0.12)
     components = {
         "risk_adjusted_return": _clamp((sharpe + 2.0) / 4.0),
@@ -16,6 +18,7 @@ def score_experiment(experiment: CampaignExperiment) -> tuple[float, dict[str, f
         "turnover_control": _clamp(1.0 - turnover / 10.0),
         "trade_count": _clamp(trades / 10.0),
         "overfitting_risk": _clamp(1.0 - flag_penalty),
+        "stress_robustness": _clamp(stress_score / 100.0),
     }
     score = round(
         100.0
@@ -25,13 +28,14 @@ def score_experiment(experiment: CampaignExperiment) -> tuple[float, dict[str, f
             + components["drawdown_control"] * 0.2
             + components["turnover_control"] * 0.1
             + components["trade_count"] * 0.1
-            + components["overfitting_risk"] * 0.2
+            + components["overfitting_risk"] * 0.15
+            + components["stress_robustness"] * 0.05
         ),
         4,
     )
     reason = (
         "Ranked by validation risk-adjusted return, drawdown control, turnover, "
-        "trade count, and overfitting flags."
+        "trade count, deterministic stress robustness, and overfitting flags."
     )
     return score, components, reason
 

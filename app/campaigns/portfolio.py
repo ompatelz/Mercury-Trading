@@ -10,6 +10,7 @@ from app.portfolio.engine import (
     StrategySeries,
     construct_portfolio,
 )
+from app.stress_testing.engine import correlation_stress
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,11 @@ def evaluate_portfolio(
     result: PortfolioResult = construct_portfolio(definition, strategies)
     return CampaignPortfolioResult(
         weights=result.weights,
-        metrics=result.metrics | {"return_series": result.return_series},
+        metrics=result.metrics
+        | {
+            "return_series": result.return_series,
+            "correlation_stress": _correlation_stress(strategies, result.weights),
+        },
         definition=definition.as_dict(),
         compatibility=result.compatibility,
         rebalance_history=result.rebalance_history,
@@ -80,3 +85,16 @@ def _ranking(result: PortfolioResult) -> dict[str, Any]:
         "explanation": "OOS streams, diversification, costs, and turnover were scored.",
         "promotion_decision": "reject" if result.rejection_reasons else "challenger",
     }
+
+
+def _correlation_stress(
+    strategies: list[StrategySeries], weights: dict[str, float]
+) -> dict[str, float]:
+    """Use only mutually available validation returns to test a correlation-one shock."""
+    by_strategy = [
+        {str(point["timestamp"]): float(point["return"]) for point in strategy.returns}
+        for strategy in strategies
+    ]
+    timestamps = sorted(set.intersection(*(set(points) for points in by_strategy)))
+    matrix = [[points[timestamp] for points in by_strategy] for timestamp in timestamps]
+    return correlation_stress(matrix, [weights[strategy.strategy_id] for strategy in strategies])
