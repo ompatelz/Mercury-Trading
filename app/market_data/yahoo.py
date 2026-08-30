@@ -22,8 +22,17 @@ class YahooFinanceProvider(MarketDataProvider):
             return pl.DataFrame()
 
         frame = frame.reset_index()
+        # yfinance returns MultiIndex columns even for one ticker (for example,
+        # ("Close", "MSFT")). Mercury operates on one requested symbol at a time,
+        # so the market-field level is the canonical column name.
         frame.columns = [
-            "_".join(str(part) for part in col if part) if isinstance(col, tuple) else str(col)
-            for col in frame.columns
+            str(column[0]) if isinstance(column, tuple) else str(column)
+            for column in frame.columns
         ]
-        return pl.from_pandas(frame)
+        if "index" in frame.columns:
+            frame = frame.rename(columns={"index": "Date"})
+
+        # Avoid ``pl.from_pandas`` here: pandas extension dtypes can require the
+        # optional pyarrow package in a slim runtime image. A Python-record
+        # conversion gives Polars the normalized primitives directly instead.
+        return pl.DataFrame(frame.to_dict(orient="list"))

@@ -28,6 +28,9 @@ def normalize_bars(raw: pl.DataFrame, symbol: str, interval: str) -> pl.DataFram
             column: PROVIDER_COLUMN_MAP[column]
             for column in raw.columns
             if column in PROVIDER_COLUMN_MAP
+            # Yahoo may return both fields. Prefer the actual closing price and
+            # use adjusted close only when it is the only close-like field.
+            if column != "Adj Close" or "Close" not in raw.columns
         }
     )
     missing = REQUIRED_COLUMNS - set(renamed.columns)
