@@ -222,7 +222,15 @@ export function App() {
         </button>
       </header>
 
-      <section className="metrics" aria-label="Dashboard metrics">
+      <nav className="sectionNav" aria-label="Dashboard sections">
+        <a href="#overview">Overview</a>
+        <a href="#research">Research</a>
+        <a href="#experiments">Experiments</a>
+        <a href="#governance">Decisions</a>
+        <a href="#operations">Operations</a>
+      </nav>
+
+      <section className="metrics" id="overview" aria-label="Dashboard metrics">
         {overview.status === "ready" ? (
           overview.data.metrics.map((metric) => (
             <article className="metric" key={metric.label}>
@@ -235,7 +243,7 @@ export function App() {
         )}
       </section>
 
-      <section className="grid two">
+      <section className="grid two" id="experiments">
         <Panel title="Experiment Explorer" icon={<Search size={17} />}>
           <div className="filters">
             <input
@@ -319,7 +327,7 @@ export function App() {
         </Panel>
       </section>
 
-      <section className="grid">
+      <section className="grid" id="research">
         <Panel title="Research Data" icon={<Database size={17} />}>
           {dataCatalog.status === "ready" ? (
             dataCatalog.data.length ? (
@@ -362,7 +370,7 @@ export function App() {
         </Panel>
       </section>
 
-      <section className="grid">
+      <section className="grid" id="governance">
         <Panel title="Audit / Decisions" icon={<Scale size={17} />}>
           {decisions.status === "ready" ? (
             decisions.data.length ? (
@@ -544,7 +552,7 @@ export function App() {
         </Panel>
       </section>
 
-      <section className="grid three">
+      <section className="grid three" id="operations">
         <LookupPanel
           title="Strategy Evolution"
           icon={<GitBranch size={17} />}
