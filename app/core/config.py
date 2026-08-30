@@ -1,7 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,10 @@ class Settings(BaseSettings):
     live_market_data_poll_seconds: float = Field(
         default=30.0, validation_alias="LIVE_MARKET_DATA_POLL_SECONDS"
     )
-    execution_mode: str = Field(default="PAPER", validation_alias="EXECUTION_MODE")
+    execution_mode: Literal["PAPER"] = Field(default="PAPER", validation_alias="EXECUTION_MODE")
+    max_request_body_bytes: PositiveInt = Field(
+        default=1_048_576, validation_alias="MAX_REQUEST_BODY_BYTES"
+    )
     backtest_engine: str = Field(default="python", validation_alias="BACKTEST_ENGINE")
     routing_policy: str = Field(default="balanced", validation_alias="ROUTING_POLICY")
     allow_model_fallback: bool = Field(default=True, validation_alias="ALLOW_MODEL_FALLBACK")
