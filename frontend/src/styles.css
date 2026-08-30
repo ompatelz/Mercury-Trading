@@ -61,6 +61,30 @@ input {
   margin-bottom: 18px;
 }
 
+.sectionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 18px;
+}
+
+.sectionNav a {
+  color: #315c68;
+  background: #e8f3f5;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 7px 11px;
+  text-decoration: none;
+}
+
+.sectionNav a:hover,
+.sectionNav a:focus-visible {
+  background: #cfe8ec;
+  outline: 2px solid #1f7a8c;
+  outline-offset: 2px;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: #566870;
@@ -147,6 +171,10 @@ h3 {
   border-radius: 8px;
   padding: 14px;
   min-width: 0;
+}
+
+section[id] {
+  scroll-margin-top: 18px;
 }
 
 .panel > header {
