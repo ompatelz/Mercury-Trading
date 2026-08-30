@@ -20,7 +20,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw await apiError(response);
   }
   return (await response.json()) as T;
 }
@@ -32,7 +32,7 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw await apiError(response);
   }
   return (await response.json()) as T;
 }
@@ -57,6 +57,19 @@ export function reproduceExperiment(id: string): Promise<ReproductionResult> {
   return postJson(`/experiments/${id}/reproduce`);
 }
 
+async function apiError(response: Response): Promise<Error> {
+  const fallback = `${response.status} ${response.statusText}`;
+  try {
+    const payload = (await response.json()) as { detail?: string | Array<{ msg?: string }> };
+    const detail = Array.isArray(payload.detail)
+      ? payload.detail.map((item) => item.msg).filter(Boolean).join("; ")
+      : payload.detail;
+    return new Error(detail || fallback);
+  } catch {
+    return new Error(fallback);
+  }
+}
+
 export type ResearchRunRequest = {
   objective: string;
   symbol: string;
@@ -70,6 +83,24 @@ export type ResearchRunRequest = {
 };
 
 export type ResearchRunResponse = { id: string; status: string; backtest_experiment_id: string | null };
+
+export type MarketDataIngestRequest = {
+  symbol: string;
+  start: string;
+  end: string;
+  interval: string;
+};
+
+export type MarketDataIngestResponse = {
+  symbol: string;
+  interval: string;
+  rows_fetched: number;
+  rows_inserted: number;
+};
+
+export function ingestMarketData(request: MarketDataIngestRequest): Promise<MarketDataIngestResponse> {
+  return postJson("/market-data/ingest", request);
+}
 
 export function runResearchExperiment(request: ResearchRunRequest): Promise<ResearchRunResponse> {
   return postJson("/research/experiments", request);
