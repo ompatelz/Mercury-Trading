@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import numpy as np
 from numpy.typing import NDArray
@@ -76,6 +77,9 @@ class MLResearchService:
         session: Session,
         definition: MLExperimentDefinition,
         result: dict[str, Any],
+        *,
+        parent_model_id: UUID | None = None,
+        lifecycle_metadata: dict[str, Any] | None = None,
     ) -> MLModel:
         artifact = dict(result["artifact"])
         checksum = stable_hash(artifact)
@@ -96,6 +100,8 @@ class MLResearchService:
             },
             artifact_location=str(artifact_path),
             artifact_checksum=checksum,
+            parent_model_id=parent_model_id,
+            lifecycle_metadata=lifecycle_metadata or {"deployment_state": "RESEARCH_ONLY"},
         )
         session.add(model)
         session.flush()
