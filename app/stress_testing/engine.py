@@ -12,8 +12,6 @@ from typing import Any, Literal
 
 import numpy as np
 
-from app.backtesting.metrics import max_drawdown, sharpe_ratio, volatility
-
 ScenarioType = Literal[
     "transaction_cost", "slippage", "volatility", "return_shift", "delayed_execution"
 ]
@@ -59,17 +57,22 @@ def apply_scenario(
 
 def path_metrics(returns: list[float]) -> dict[str, float]:
     values = np.asarray(returns, dtype=float)
+    return _path_metrics_array(values)
+
+
+def _path_metrics_array(values: np.ndarray[Any, Any]) -> dict[str, float]:
     equity = np.cumprod(1.0 + values)
     if values.size == 0:
         return {"total_return": 0.0, "sharpe_ratio": 0.0, "max_drawdown": 0.0, "volatility": 0.0}
-    import polars as pl
-
-    series, equity_series = pl.Series(values), pl.Series(equity)
+    annualization = np.sqrt(252.0)
+    deviation = float(np.std(values, ddof=1)) if values.size >= 2 else 0.0
+    sharpe = float(np.mean(values) / deviation * annualization) if deviation else 0.0
+    running_max = np.maximum.accumulate(equity)
     return {
         "total_return": float(equity[-1] - 1.0),
-        "sharpe_ratio": sharpe_ratio(series),
-        "max_drawdown": max_drawdown(equity_series),
-        "volatility": volatility(series),
+        "sharpe_ratio": sharpe,
+        "max_drawdown": float((equity / running_max - 1.0).min()),
+        "volatility": float(deviation * annualization),
     }
 
 
@@ -85,12 +88,13 @@ def block_bootstrap(
         raise ValueError("simulations must be positive")
     values, rng = np.asarray(returns, dtype=float), np.random.default_rng(seed)
     results: list[dict[str, float]] = []
+    blocks_per_sample = int(np.ceil(len(values) / block_size))
+    offsets = np.arange(block_size)
     for _ in range(simulations):
-        sampled: list[float] = []
-        while len(sampled) < len(values):
-            start = int(rng.integers(0, len(values)))
-            sampled.extend(values[(start + offset) % len(values)] for offset in range(block_size))
-        results.append(path_metrics(sampled[: len(values)]))
+        starts = rng.integers(0, len(values), size=blocks_per_sample)
+        indexes = (starts[:, None] + offsets) % len(values)
+        sampled = values[indexes].reshape(-1)[: len(values)]
+        results.append(_path_metrics_array(sampled))
     return results
 
 
