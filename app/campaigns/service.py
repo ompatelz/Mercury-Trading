@@ -14,6 +14,7 @@ from app.campaigns.portfolio import evaluate_portfolio
 from app.campaigns.ranking import score_experiment
 from app.campaigns.schemas import CampaignCreateRequest
 from app.campaigns.splits import build_temporal_split
+from app.campaigns.statistics import bootstrap_interval, compare_baseline, search_context
 from app.campaigns.walk_forward import aggregate_walk_forward, build_walk_forward_windows
 from app.data.service import DataLineageService
 from app.evolution.schemas import EvolutionRunCreateRequest
@@ -644,6 +645,12 @@ class CampaignService:
             "walk_forward_windows": walk_forward_windows,
             "walk_forward": walk_forward,
             "test_period_locked": campaign.split_definition["test"],
+            "statistical_evidence": _statistical_evidence(
+                train_experiment.metrics,
+                validation_experiment.metrics,
+                validation_experiment.run_metadata,
+                hypotheses_tested=len(campaign.generated_hypotheses),
+            ),
         }
         planned.risk_flags = flags
         if bool(campaign.constraints.get("require_stress_testing", False)):
@@ -912,6 +919,43 @@ def _feature_version_ids(feature_set: list[dict[str, Any]]) -> list[UUID]:
         if raw is not None:
             ids.append(UUID(str(raw)))
     return ids
+
+
+def _statistical_evidence(
+    train: dict[str, Any],
+    validation: dict[str, Any],
+    metadata: dict[str, Any],
+    *,
+    hypotheses_tested: int,
+) -> dict[str, Any]:
+    points = metadata.get("portfolio_return_series", [])
+    returns = [float(point["return"]) for point in points if "return" in point]
+    uncertainty: dict[str, Any]
+    if len(returns) >= 5:
+        uncertainty = bootstrap_interval(returns)
+    else:
+        uncertainty = {"status": "unavailable", "reason": "fewer than five validation returns"}
+    baseline = {
+        "sharpe_ratio": float(train.get("sharpe_ratio", 0.0)),
+        "total_return": float(train.get("total_return", 0.0)),
+        "max_drawdown": float(train.get("max_drawdown", 0.0)),
+    }
+    candidate = {
+        "sharpe_ratio": float(validation.get("sharpe_ratio", 0.0)),
+        "total_return": float(validation.get("total_return", 0.0)),
+        "max_drawdown": float(validation.get("max_drawdown", 0.0)),
+    }
+    return {
+        "baseline_comparison": compare_baseline(candidate, baseline),
+        "uncertainty": uncertainty,
+        "search_context": search_context(
+            hypotheses_tested=hypotheses_tested, selected_sharpe=candidate["sharpe_ratio"]
+        ),
+        "limitations": (
+            "Train-versus-validation comparison is evidence, not a replacement for the locked "
+            "test split."
+        ),
+    }
 
 
 def _default_budget(raw: dict[str, Any]) -> dict[str, Any]:
