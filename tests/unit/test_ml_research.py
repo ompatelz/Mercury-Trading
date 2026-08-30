@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.factor_research.engine import construct_weights, rank_scores
 from app.ml_research.integration import predictions_to_score_points
+from app.ml_research.lifecycle import MLModelLifecycleService
 from app.ml_research.schemas import MLExperimentDefinition, MLObservation, Period
 from app.ml_research.service import MLResearchService
 from app.models.ml import MLModel, MLPrediction
@@ -95,3 +96,145 @@ def test_splits_are_chronological() -> None:
             test=Period(start=start + timedelta(days=3), end=start + timedelta(days=4)),
             dataset_fingerprint="b" * 64,
         )
+
+
+def _persist_model(db_session: Session, tmp_path: Path, key: str) -> MLModel:
+    definition = MLExperimentDefinition.model_validate(
+        {**_definition().model_dump(), "experiment_key": key}
+    )
+    service = MLResearchService(tmp_path)
+    model = service.persist(db_session, definition, service.run(definition, _rows()))
+    model.status = "VALIDATED"
+    db_session.flush()
+    return model
+
+
+def _drift_values(fingerprint: str = "a" * 64) -> dict[str, object]:
+    return {
+        "dataset_fingerprint": fingerprint,
+        "feature_means": {"momentum": 0.0},
+        "prediction_mean": 0.0,
+        "ic": 0.2,
+        "rank_ic": 0.2,
+        "portfolio_sharpe": 1.0,
+        "feature_importance": {"momentum": 0.2},
+        "regime_metrics": {"bull": {"ic": 0.2}},
+    }
+
+
+def test_drift_requires_minimum_evidence_and_persistence(
+    db_session: Session, tmp_path: Path
+) -> None:
+    model = _persist_model(db_session, tmp_path, "drift-model")
+    service = MLModelLifecycleService(db_session)
+    start = datetime(2021, 1, 1, tzinfo=UTC)
+    baseline = _drift_values()
+    observed = {**_drift_values("b" * 64), "prediction_mean": 1.0}
+    insufficient = service.record_drift(
+        model.id,
+        observed_at=start,
+        window_start=start,
+        window_end=start + timedelta(days=1),
+        sample_count=5,
+        source="shadow",
+        baseline=baseline,
+        observed=observed,
+    )
+    assert insufficient.drift_types == []
+    assert not insufficient.retraining_triggered
+    first = service.record_drift(
+        model.id,
+        observed_at=start + timedelta(days=2),
+        window_start=start + timedelta(days=1),
+        window_end=start + timedelta(days=2),
+        sample_count=30,
+        source="shadow",
+        baseline=baseline,
+        observed=observed,
+    )
+    second = service.record_drift(
+        model.id,
+        observed_at=start + timedelta(days=3),
+        window_start=start + timedelta(days=2),
+        window_end=start + timedelta(days=3),
+        sample_count=30,
+        source="shadow",
+        baseline=baseline,
+        observed=observed,
+    )
+    assert {"DATA_DRIFT", "PREDICTION_DRIFT"} <= set(first.drift_types)
+    assert not first.retraining_triggered
+    assert second.consecutive_windows == 2
+    assert second.retraining_triggered
+
+
+def test_retraining_creates_only_a_lineaged_research_candidate(
+    db_session: Session, tmp_path: Path
+) -> None:
+    parent = _persist_model(db_session, tmp_path, "parent-model")
+    definition = MLExperimentDefinition.model_validate(
+        {**_definition().model_dump(), "experiment_key": "retrained-model"}
+    )
+    candidate = MLModelLifecycleService(db_session, MLResearchService(tmp_path)).retrain(
+        parent.id, definition, _rows(), "SCHEDULED"
+    )
+    assert candidate.parent_model_id == parent.id
+    assert candidate.status != "CHAMPION"
+    assert candidate.lifecycle_metadata["deployment_state"] == "RESEARCH_ONLY"
+
+
+def test_promotion_requires_oos_stress_and_regime_evidence(
+    db_session: Session, tmp_path: Path
+) -> None:
+    champion = _persist_model(db_session, tmp_path, "champion-model")
+    candidate = _persist_model(db_session, tmp_path, "candidate-model")
+    service = MLModelLifecycleService(db_session)
+    rejected = service.decide_promotion(
+        champion.id,
+        candidate.id,
+        {
+            "candidate_oos": {
+                "sample_count": 30,
+                "ic": 0.3,
+                "rank_ic": 0.3,
+                "sharpe": 1.2,
+                "max_drawdown": -0.1,
+            },
+            "champion_oos": {
+                "sample_count": 30,
+                "ic": 0.2,
+                "rank_ic": 0.2,
+                "sharpe": 1.0,
+                "max_drawdown": -0.1,
+            },
+            "stress_passed": False,
+            "regime_passed": True,
+        },
+    )
+    assert rejected.decision == "REJECT"
+    assert candidate.status == "VALIDATED"
+    promoted = service.decide_promotion(
+        champion.id,
+        candidate.id,
+        {
+            "candidate_oos": {
+                "sample_count": 30,
+                "ic": 0.3,
+                "rank_ic": 0.3,
+                "sharpe": 1.2,
+                "max_drawdown": -0.1,
+            },
+            "champion_oos": {
+                "sample_count": 30,
+                "ic": 0.2,
+                "rank_ic": 0.2,
+                "sharpe": 1.0,
+                "max_drawdown": -0.1,
+            },
+            "stress_passed": True,
+            "regime_passed": True,
+        },
+    )
+    assert promoted.decision == "PROMOTE"
+    assert champion.status == "SUPERSEDED"
+    assert candidate.status == "CHAMPION"
