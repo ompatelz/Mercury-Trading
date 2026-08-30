@@ -132,21 +132,16 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads overview, experiments, metrics, charts, and regime state", async () => {
+  it("loads the guided paper-only workspace with live research data", async () => {
     render(<App />);
 
-    expect(await screen.findByText("Research Dashboard")).toBeInTheDocument();
-    expect(await screen.findByText("Experiments Run")).toBeInTheDocument();
-    expect(await screen.findByText("moving_average_crossover")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Performance")).toBeInTheDocument());
-    expect(await screen.findByText("Measured Result")).toBeInTheDocument();
-    expect(screen.getByText("Equity Curve")).toBeInTheDocument();
-    expect(await screen.findByTestId("research-data-catalog")).toHaveTextContent("MSFT_1d");
-    expect(await screen.findByTestId("decision-audit")).toHaveTextContent("WORKFLOW_REJECTION");
-    expect(screen.getByText("Regime Performance")).toBeInTheDocument();
-    expect(screen.getByTestId("regime-weaknesses")).toHaveTextContent(
-      "No persisted weakness flags"
-    );
+    expect(await screen.findByText("Turn an idea into")).toBeInTheDocument();
+    expect(await screen.findByText("How Mercury works")).toBeInTheDocument();
+    expect(await screen.findByText("Learn through examples")).toBeInTheDocument();
+    expect((await screen.findAllByText("Moving Average Crossover")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByText("MSFT_1d")).toBeInTheDocument());
+    expect(await screen.findByText("Workflow Rejection")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reproduce this run" })).toBeInTheDocument();
   });
 });
 

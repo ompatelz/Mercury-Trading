@@ -1,822 +1,146 @@
 import {
-  Activity,
-  BarChart3,
-  Brain,
+  ArrowRight,
+  Beaker,
+  CheckCircle2,
+  ChevronRight,
+  CircleDot,
   Database,
-  FileJson,
+  FileCheck2,
   FlaskConical,
+  Gauge,
   GitBranch,
-  LineChart,
-  Repeat2,
+  Play,
   RefreshCw,
-  Scale,
-  Search
+  RotateCcw,
+  ShieldCheck,
+  TerminalSquare
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart as RechartsLineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-import {
-  getCampaign,
-  getExperiment,
-  getExperimentReport,
-  getLineage,
-  getOverview,
-  getPaperSession,
-  getWorkflowEvals,
-  listDecisions,
-  listDatasetCatalog,
-  listExperiments,
-  reproduceExperiment
-} from "./api";
+import type { FormEvent } from "react";
+import { getOverview, listDatasetCatalog, listDecisions, listExperiments, reproduceExperiment, runResearchExperiment } from "./api";
 import CountUp from "./components/CountUp";
 import { SkiperThemeToggle } from "./components/SkiperThemeToggle";
-import type {
-  CampaignDashboard,
-  Decision,
-  DatasetCatalogItem,
-  DashboardMetric,
-  DashboardOverview,
-  ExperimentDetail,
-  ExperimentListItem,
-  Lineage,
-  PaperSessionDashboard,
-  ReproductionResult,
-  ResearchArtifact,
-  WorkflowEvalDashboard
-} from "./types";
+import type { DashboardOverview, DatasetCatalogItem, Decision, ExperimentListItem, ReproductionResult } from "./types";
 
-type LoadState<T> =
-  | { status: "idle" | "loading"; data?: T; error?: undefined }
-  | { status: "ready"; data: T; error?: undefined }
-  | { status: "error"; data?: T; error: string };
+type Status<T> = { data?: T; error?: string; loading: boolean };
 
-const money = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const demoFlows = [
+  { title: "Trend validation", tag: "Example 01", summary: "Compare a moving-average idea across market regimes before it can enter PAPER mode.", steps: ["Choose a liquid symbol", "Run the reproducible experiment", "Inspect rules and drawdown"] },
+  { title: "Research review", tag: "Example 02", summary: "Trace a candidate from a dataset snapshot to an evidence-backed decision record.", steps: ["Open the dataset version", "Review the experiment", "Verify the decision hash"] },
+  { title: "Paper session", tag: "Example 03", summary: "Observe a simulated order lifecycle without connecting to a broker or placing real orders.", steps: ["Select an approved strategy", "Start a PAPER session", "Monitor fills and safeguards"] }
+];
 
 export function App() {
-  const [overview, setOverview] = useState<LoadState<DashboardOverview>>({ status: "loading" });
-  const [experiments, setExperiments] = useState<LoadState<ExperimentListItem[]>>({
-    status: "loading"
-  });
-  const [selectedExperimentId, setSelectedExperimentId] = useState<string | null>(null);
-  const [experiment, setExperiment] = useState<LoadState<ExperimentDetail>>({ status: "idle" });
-  const [report, setReport] = useState<LoadState<ResearchArtifact>>({ status: "idle" });
-  const [reproduction, setReproduction] = useState<LoadState<ReproductionResult>>({
-    status: "idle"
-  });
-  const [lineage, setLineage] = useState<LoadState<Lineage>>({ status: "idle" });
-  const [campaign, setCampaign] = useState<LoadState<CampaignDashboard>>({ status: "idle" });
-  const [paper, setPaper] = useState<LoadState<PaperSessionDashboard>>({ status: "idle" });
-  const [workflowEvals, setWorkflowEvals] = useState<LoadState<WorkflowEvalDashboard>>({ status: "loading" });
-  const [decisions, setDecisions] = useState<LoadState<Decision[]>>({ status: "loading" });
-  const [dataCatalog, setDataCatalog] = useState<LoadState<DatasetCatalogItem[]>>({
-    status: "loading"
-  });
-  const [filters, setFilters] = useState({ symbol: "", status: "", strategy_family: "" });
-  const [ids, setIds] = useState({ strategy: "", campaign: "", paper: "" });
-  const [isDark, setIsDark] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDark, setIsDark] = useState(true);
+  const [overview, setOverview] = useState<Status<DashboardOverview>>({ loading: true });
+  const [experiments, setExperiments] = useState<Status<ExperimentListItem[]>>({ loading: true });
+  const [datasets, setDatasets] = useState<Status<DatasetCatalogItem[]>>({ loading: true });
+  const [decisions, setDecisions] = useState<Status<Decision[]>>({ loading: true });
+  const [selectedExperiment, setSelectedExperiment] = useState<string | null>(null);
+  const [selectedExample, setSelectedExample] = useState(0);
+  const [reproduction, setReproduction] = useState<Status<ReproductionResult>>({ loading: false });
+  const [researchRun, setResearchRun] = useState<Status<{ id: string; status: string }>>({ loading: false });
+  const [runSymbol, setRunSymbol] = useState("MSFT");
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    void refreshAll();
-    // The initial load should not refetch while users type filters; Apply controls refresh timing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const activeExperiment = useMemo(
+    () => experiments.data?.find((item) => item.id === selectedExperiment) ?? experiments.data?.[0],
+    [experiments.data, selectedExperiment]
+  );
 
-  async function refreshAll() {
-    setIsRefreshing(true);
-    try {
-      await Promise.all([
-        refreshOverview(),
-        refreshExperiments(),
-        refreshWorkflowEvals(),
-        refreshDecisions(),
-        refreshDataCatalog()
-      ]);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
+  useEffect(() => { void refreshWorkspace(); }, []);
 
-  useEffect(() => {
-    if (selectedExperimentId) {
-      setExperiment({ status: "loading" });
-      setReport({ status: "loading" });
-      setReproduction({ status: "idle" });
-      getExperiment(selectedExperimentId)
-        .then((data) => setExperiment({ status: "ready", data }))
-        .catch((error: Error) => setExperiment({ status: "error", error: error.message }));
-      getExperimentReport(selectedExperimentId)
-        .then((data) => setReport({ status: "ready", data }))
-        .catch((error: Error) => setReport({ status: "error", error: error.message }));
-    }
-  }, [selectedExperimentId]);
-
-  const selectedExperiment = experiment.status === "ready" ? experiment.data : null;
-  const regimeRows = useMemo(() => regimeChartRows(selectedExperiment), [selectedExperiment]);
-  const tradeRows = useMemo(() => tradeChartRows(selectedExperiment), [selectedExperiment]);
-  const equityRows = useMemo(() => reportChartRows(report, "equity_curve"), [report]);
-  const drawdownRows = useMemo(() => reportChartRows(report, "drawdown"), [report]);
-  const returnRows = useMemo(() => returnDistributionRows(report), [report]);
-
-  async function refreshOverview() {
-    setOverview({ status: "loading" });
-    try {
-      setOverview({ status: "ready", data: await getOverview() });
-    } catch (error) {
-      setOverview({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function refreshExperiments() {
-    setExperiments({ status: "loading" });
-    const query = new URLSearchParams({ limit: "50" });
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value.trim()) query.set(key, value.trim());
-    });
-    try {
-      const data = await listExperiments(query);
-      setExperiments({ status: "ready", data: data.items });
-      if (!selectedExperimentId && data.items[0]) setSelectedExperimentId(data.items[0].id);
-    } catch (error) {
-      setExperiments({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function refreshWorkflowEvals() {
-    setWorkflowEvals({ status: "loading" });
-    try {
-      const data = await getWorkflowEvals();
-      setWorkflowEvals({
-        status: "ready",
-        data: { experiments: Array.isArray(data.experiments) ? data.experiments : [] }
-      });
-    } catch (error) {
-      setWorkflowEvals({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function refreshDataCatalog() {
-    setDataCatalog({ status: "loading" });
-    try {
-      setDataCatalog({ status: "ready", data: await listDatasetCatalog() });
-    } catch (error) {
-      setDataCatalog({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function refreshDecisions() {
-    setDecisions({ status: "loading" });
-    try {
-      setDecisions({ status: "ready", data: await listDecisions() });
-    } catch (error) {
-      setDecisions({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function loadLineage() {
-    if (!ids.strategy.trim()) return;
-    setLineage({ status: "loading" });
-    try {
-      setLineage({ status: "ready", data: await getLineage(ids.strategy.trim()) });
-    } catch (error) {
-      setLineage({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function loadCampaign() {
-    if (!ids.campaign.trim()) return;
-    setCampaign({ status: "loading" });
-    try {
-      setCampaign({ status: "ready", data: await getCampaign(ids.campaign.trim()) });
-    } catch (error) {
-      setCampaign({ status: "error", error: (error as Error).message });
-    }
-  }
-
-  async function loadPaper() {
-    if (!ids.paper.trim()) return;
-    setPaper({ status: "loading" });
-    try {
-      setPaper({ status: "ready", data: await getPaperSession(ids.paper.trim()) });
-    } catch (error) {
-      setPaper({ status: "error", error: (error as Error).message });
-    }
+  async function refreshWorkspace() {
+    setRefreshing(true);
+    setOverview((current) => ({ ...current, loading: true, error: undefined }));
+    setExperiments((current) => ({ ...current, loading: true, error: undefined }));
+    setDatasets((current) => ({ ...current, loading: true, error: undefined }));
+    setDecisions((current) => ({ ...current, loading: true, error: undefined }));
+    const results = await Promise.allSettled([getOverview(), listExperiments(new URLSearchParams({ limit: "8" })), listDatasetCatalog(), listDecisions()]);
+    settle(results[0], setOverview);
+    settle(results[1], setExperiments, (value) => value.items);
+    settle(results[2], setDatasets);
+    settle(results[3], setDecisions);
+    setRefreshing(false);
   }
 
   async function runReproduction() {
-    if (!selectedExperimentId) return;
-    setReproduction({ status: "loading" });
+    if (!activeExperiment) return;
+    setReproduction({ loading: true });
+    try { setReproduction({ loading: false, data: await reproduceExperiment(activeExperiment.id) }); }
+    catch (error) { setReproduction({ loading: false, error: message(error) }); }
+  }
+
+  async function startResearchRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setResearchRun({ loading: true });
     try {
-      setReproduction({
-        status: "ready",
-        data: await reproduceExperiment(selectedExperimentId)
+      const result = await runResearchExperiment({
+        objective: "Test a simple moving-average trend strategy with documented costs and reproducible assumptions.",
+        symbol: runSymbol.trim().toUpperCase(),
+        start_date: "2023-01-01",
+        end_date: "2024-01-01",
+        interval: "1d",
+        initial_capital: 10_000,
+        transaction_cost_bps: 1,
+        slippage_bps: 0,
+        execution_engine: "python"
       });
-    } catch (error) {
-      setReproduction({ status: "error", error: (error as Error).message });
-    }
+      setResearchRun({ loading: false, data: result });
+      await refreshWorkspace();
+    } catch (error) { setResearchRun({ loading: false, error: message(error) }); }
   }
 
   return (
-    <main className={`shell ${isDark ? "themeDark" : ""}`}>
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Mercury</p>
-          <h1>Research Dashboard</h1>
-        </div>
-        <div className="topbarActions">
-          <a className="componentCredit" href="https://skiper-ui.com/v1/skiper4">
-            Theme toggle by Skiper UI
-          </a>
-          <SkiperThemeToggle isDark={isDark} onToggle={() => setIsDark((value) => !value)} />
-          <button
-            className="iconButton"
-            onClick={() => void refreshAll()}
-            aria-label="Refresh dashboard data"
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={isRefreshing ? "refreshing" : ""} size={18} />
-          </button>
-        </div>
+    <main className={isDark ? "app app--dark" : "app"}>
+      <div className="ambient ambient--one" /><div className="ambient ambient--two" />
+      <header className="nav">
+        <a className="brand" href="#top" aria-label="Mercury home"><span className="brandMark"><CircleDot size={19} /></span><span>Mercury</span><small>RESEARCH OS</small></a>
+        <nav className="navLinks" aria-label="Primary navigation"><a href="#how-it-works">How it works</a><a href="#examples">Examples</a><a href="#workspace">Workspace</a></nav>
+        <div className="navActions"><a className="textAction" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">API docs <ArrowRight size={14} /></a><SkiperThemeToggle isDark={isDark} onToggle={() => setIsDark((value) => !value)} /></div>
       </header>
 
-      <nav className="sectionNav" aria-label="Dashboard sections">
-        <a href="#overview">Overview</a>
-        <a href="#research">Research</a>
-        <a href="#experiments">Experiments</a>
-        <a href="#governance">Decisions</a>
-        <a href="#operations">Operations</a>
-      </nav>
-
-      <section className="metrics" id="overview" aria-label="Dashboard metrics">
-        {overview.status === "ready" ? (
-          overview.data.metrics.map((metric) => (
-            <article className="metric" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>
-                <MetricValue value={metric.value} unit={metric.unit} />
-              </strong>
-            </article>
-          ))
-        ) : (
-          <StateBlock state={overview.status} error={overview.error} label="overview" />
-        )}
+      <section className="hero" id="top">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: "easeOut" }}>
+          <span className="eyebrow"><span className="liveDot" /> PAPER-ONLY RESEARCH</span>
+          <h1>Turn an idea into<br /><em>evidence.</em></h1>
+          <p>Mercury is a calm, auditable workspace for testing systematic ideas—then reviewing exactly what happened before a strategy ever reaches PAPER execution.</p>
+          <div className="heroActions"><a className="button button--primary" href="#workspace">Open workspace <ArrowRight size={17} /></a><a className="button button--secondary" href="#how-it-works"><Play size={16} /> See how it works</a></div>
+        </motion.div>
+        <motion.aside className="heroStatus" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5, delay: 0.1 }}>
+          <div className="statusHeader"><span>LIVE WORKSPACE</span><span className="statusPill">PAPER</span></div>
+          <div className="signal"><span className="signalRing" /><span>System safeguards active</span></div>
+          <div className="statusRows"><StatusRow label="Research API" value={overview.data ? "Connected" : overview.loading ? "Checking" : "Unavailable"} ok={Boolean(overview.data)} /><StatusRow label="Evidence trail" value="Required" ok /><StatusRow label="Execution mode" value="PAPER only" ok /></div>
+          <button className="refreshButton" onClick={() => void refreshWorkspace()} disabled={refreshing}><RefreshCw size={15} className={refreshing ? "spin" : ""} /> {refreshing ? "Refreshing" : "Refresh live data"}</button>
+        </motion.aside>
       </section>
 
-      <section className="grid two" id="experiments">
-        <Panel title="Experiment Explorer" icon={<Search size={17} />}>
-          <div className="filters">
-            <input
-              aria-label="Symbol filter"
-              placeholder="Symbol"
-              value={filters.symbol}
-              onChange={(event) => setFilters({ ...filters, symbol: event.target.value })}
-            />
-            <input
-              aria-label="Status filter"
-              placeholder="Status"
-              value={filters.status}
-              onChange={(event) => setFilters({ ...filters, status: event.target.value })}
-            />
-            <input
-              aria-label="Strategy family filter"
-              placeholder="Strategy family"
-              value={filters.strategy_family}
-              onChange={(event) =>
-                setFilters({ ...filters, strategy_family: event.target.value })
-              }
-            />
-            <button onClick={() => void refreshExperiments()}>Apply</button>
-          </div>
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Strategy</th>
-                  <th>Symbol</th>
-                  <th>Status</th>
-                  <th>Sharpe</th>
-                  <th>Drawdown</th>
-                </tr>
-              </thead>
-              <tbody>
-                {experiments.status === "ready" &&
-                  experiments.data.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={item.id === selectedExperimentId ? "selected" : ""}
-                      onClick={() => setSelectedExperimentId(item.id)}
-                    >
-                      <td>{item.strategy_name}</td>
-                      <td>{item.symbol}</td>
-                      <td>{item.status}</td>
-                      <td>{numberValue(item.metrics.sharpe_ratio)}</td>
-                      <td>{numberValue(item.metrics.max_drawdown)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-          <StateBlock state={experiments.status} error={experiments.error} label="experiments" />
-        </Panel>
+      <section className="stats" aria-label="Live workspace summary"><Stat label="Experiments" value={experiments.data?.length ?? 0} loading={experiments.loading} /><Stat label="Dataset versions" value={datasets.data?.reduce((total, item) => total + item.versions.length, 0) ?? 0} loading={datasets.loading} /><Stat label="Recorded decisions" value={decisions.data?.length ?? 0} loading={decisions.loading} /><div className="stat stat--note"><ShieldCheck size={18} /><span>Every result remains reviewable before PAPER execution.</span></div></section>
 
-        <Panel title="System Health" icon={<Activity size={17} />}>
-          <div className="healthList">
-            {overview.status === "ready" &&
-              overview.data.system_health.map((item) => (
-                <div className="health" key={item.component}>
-                  <span className={`dot ${item.status.toLowerCase()}`} />
-                  <div>
-                    <strong>{item.component}</strong>
-                    <p>{item.detail}</p>
-                  </div>
-                </div>
-              ))}
-          </div>
-          <h3>Recent Activity</h3>
-          <div className="activityList">
-            {overview.status === "ready" &&
-              overview.data.recent_activity.map((item) => (
-                <div className="activityItem" key={item.id}>
-                  <span>{item.kind}</span>
-                  <strong>{item.title}</strong>
-                  <small>{item.status}</small>
-                </div>
-              ))}
-          </div>
-        </Panel>
-      </section>
+      <section className="section" id="how-it-works"><div className="sectionHeading"><span className="kicker">THE FLOW</span><h2>How Mercury works</h2><p>No black boxes, no live trading.</p></div><div className="flow"><FlowStep icon={<Database />} number="01" title="Ground the data" text="Use versioned market data with its source, policy, and checksum attached." /><FlowStep icon={<FlaskConical />} number="02" title="Test the idea" text="Run a constrained experiment with declared assumptions and reproducible inputs." /><FlowStep icon={<FileCheck2 />} number="03" title="Review evidence" text="Compare performance, weaknesses, and decision rules—then inspect the audit trail." /><FlowStep icon={<Gauge />} number="04" title="Simulate only" text="Approved strategies may run in PAPER mode. Real-money execution is not available here." /></div></section>
 
-      <section className="grid" id="research">
-        <Panel title="Research Data" icon={<Database size={17} />}>
-          {dataCatalog.status === "ready" ? (
-            dataCatalog.data.length ? (
-              <div className="tableWrap dataCatalog" data-testid="research-data-catalog">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Dataset</th>
-                      <th>Version</th>
-                      <th>Symbols</th>
-                      <th>Rows</th>
-                      <th>Policy</th>
-                      <th>Quality</th>
-                      <th>Checksum</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dataCatalog.data.flatMap((dataset) =>
-                      dataset.versions.map((version) => (
-                        <tr key={version.id}>
-                          <td>{dataset.name}</td>
-                          <td>v{version.version}</td>
-                          <td>{version.symbols.join(", ")}</td>
-                          <td>{version.row_count}</td>
-                          <td>{version.adjustment_policy}</td>
-                          <td>{version.quality_report.valid === false ? "failed" : "passed"}</td>
-                          <td>{version.checksum.slice(0, 12)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="empty">No immutable datasets have been created yet.</p>
-            )
-          ) : (
-            <StateBlock state={dataCatalog.status} error={dataCatalog.error} label="research data" />
-          )}
-        </Panel>
-      </section>
+      <section className="section examples" id="examples"><div className="sectionHeading"><span className="kicker">START HERE</span><h2>Learn through examples</h2><p>Pick a path, see the workflow, then open the live workspace.</p></div><div className="exampleLayout"><div className="exampleTabs" role="tablist" aria-label="Example workflows">{demoFlows.map((flow, index) => <button key={flow.title} className={selectedExample === index ? "exampleTab exampleTab--active" : "exampleTab"} onClick={() => setSelectedExample(index)} role="tab" aria-selected={selectedExample === index}><span>{flow.tag}</span><strong>{flow.title}</strong><ChevronRight size={16} /></button>)}</div><motion.article key={selectedExample} className="exampleDetail" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}><span className="exampleTag">{demoFlows[selectedExample].tag}</span><h3>{demoFlows[selectedExample].title}</h3><p>{demoFlows[selectedExample].summary}</p><ol>{demoFlows[selectedExample].steps.map((step) => <li key={step}><CheckCircle2 size={16} /> {step}</li>)}</ol><a className="inlineLink" href="#workspace">Try it in the workspace <ArrowRight size={15} /></a></motion.article></div></section>
 
-      <section className="grid" id="governance">
-        <Panel title="Audit / Decisions" icon={<Scale size={17} />}>
-          {decisions.status === "ready" ? (
-            decisions.data.length ? (
-              <div className="decisionList" data-testid="decision-audit">
-                {decisions.data.slice(0, 8).map((item) => (
-                  <article className="decisionItem" key={item.id}>
-                    <div>
-                      <span>{item.decision_type}</span>
-                      <strong>{item.outcome}</strong>
-                      <small>{item.reason}</small>
-                    </div>
-                    <div className="decisionMeta">
-                      <span>{item.actor}</span>
-                      <span>{item.content_hash.slice(0, 12)}</span>
-                      <span>{item.integrity.verified === false ? "hash mismatch" : "hash verified"}</span>
-                    </div>
-                    {item.rules.length ? (
-                      <div className="ruleList">
-                        {item.rules.map((rule) => (
-                          <span className={rule.passed ? "passed" : "failed"} key={rule.rule}>
-                            {rule.rule}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="empty">No decisions have been recorded yet.</p>
-            )
-          ) : (
-            <StateBlock state={decisions.status} error={decisions.error} label="decisions" />
-          )}
-        </Panel>
-      </section>
-
-      <section className="grid two">
-        <Panel title="Experiment Detail" icon={<FlaskConical size={17} />}>
-          {selectedExperiment ? (
-            <>
-              <div className="split">
-                <MetricColumn title="Research Context" value={selectedExperiment.research_context} />
-                <MetricColumn title="Performance" value={selectedExperiment.performance} />
-              </div>
-              <div className="chartGrid">
-                <ChartFrame title="Trades">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <RechartsLineChart data={tradeRows}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line dataKey="price" stroke="#1f7a8c" dot={false} />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
-                </ChartFrame>
-                <ChartFrame title="Regime Performance">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={regimeRows}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="regime" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="sharpe" fill="#3d5a80" />
-                      <Bar dataKey="drawdown" fill="#c44536" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartFrame>
-              </div>
-              <div className="weaknesses" data-testid="regime-weaknesses">
-                <strong>Regime Weaknesses</strong>
-                <span>
-                  {selectedExperiment.regime_weaknesses.length
-                    ? selectedExperiment.regime_weaknesses.join(", ")
-                    : "No persisted weakness flags"}
-                </span>
-              </div>
-            </>
-          ) : (
-            <StateBlock state={experiment.status} error={experiment.error} label="experiment detail" />
-          )}
-        </Panel>
-
-        <Panel title="Research Report" icon={<FileJson size={17} />}>
-          {report.status === "ready" ? (
-            <>
-              <div className="reportActions">
-                <a href={`/experiments/${report.data.experiment_id}/report?format=json`}>JSON</a>
-                <a href={`/experiments/${report.data.experiment_id}/report?format=markdown`}>
-                  Markdown
-                </a>
-                <button onClick={() => void runReproduction()}>
-                  <Repeat2 size={16} />
-                  Reproduce
-                </button>
-              </div>
-              <div className="split">
-                <MetricColumn title="Measured Result" value={report.data.measured_results} />
-                <MetricColumn title="Interpretation" value={report.data.interpretation} />
-              </div>
-              <MetricColumn
-                title="Reproducibility"
-                value={report.data.reproducibility_metadata}
-              />
-              {reproduction.status === "ready" ? (
-                <div className={`reproduction ${reproduction.data.match ? "match" : "mismatch"}`}>
-                  <strong>{reproduction.data.status}</strong>
-                  <span>
-                    {reproduction.data.blocking_differences.length
-                      ? reproduction.data.blocking_differences.join(", ")
-                      : "metrics and fingerprints match"}
-                  </span>
-                </div>
-              ) : (
-                <StateBlock
-                  state={reproduction.status}
-                  error={reproduction.error}
-                  label="reproduction"
-                />
-              )}
-            </>
-          ) : (
-            <StateBlock state={report.status} error={report.error} label="research report" />
-          )}
-        </Panel>
-      </section>
-
-      <section className="grid two">
-        <Panel title="Research Charts" icon={<LineChart size={17} />}>
-          <div className="chartGrid">
-            <ChartFrame title="Equity Curve">
-              <ResponsiveContainer width="100%" height={220}>
-                <RechartsLineChart data={equityRows}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line dataKey="equity" stroke="#1f7a8c" dot={false} />
-                </RechartsLineChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-            <ChartFrame title="Drawdown">
-              <ResponsiveContainer width="100%" height={220}>
-                <RechartsLineChart data={drawdownRows}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis />
-                  <Tooltip />
-                  <Line dataKey="drawdown" stroke="#c44536" dot={false} />
-                </RechartsLineChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-            <ChartFrame title="Return Distribution">
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={returnRows}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="bucket" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#3d5a80" />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartFrame>
-          </div>
-        </Panel>
-
-        <Panel title="Memory & Learning" icon={<Brain size={17} />}>
-          {selectedExperiment?.memory_lessons.length ? (
-            selectedExperiment.memory_lessons.map((lesson) => (
-              <article className="lesson" key={String(lesson.id)}>
-                <strong>{String(lesson.hypothesis)}</strong>
-                <p>{String(lesson.critic_summary)}</p>
-              </article>
-            ))
-          ) : (
-            <p className="empty">No memory lessons linked to the selected experiment.</p>
-          )}
-        </Panel>
-      </section>
-
-      <section className="grid three" id="operations">
-        <LookupPanel
-          title="Strategy Evolution"
-          icon={<GitBranch size={17} />}
-          label="Strategy candidate id"
-          value={ids.strategy}
-          onChange={(value) => setIds({ ...ids, strategy: value })}
-          onLoad={() => void loadLineage()}
-        >
-          {lineage.status === "ready" ? (
-            <div className="lineage" data-testid="strategy-lineage">
-              {lineage.data.nodes.map((node) => (
-                <div className="node" key={node.id}>
-                  <strong>Gen {node.generation}</strong>
-                  <span>{node.promotion_status}</span>
-                  <small>{node.mutation_type ?? "seed"}</small>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <StateBlock state={lineage.status} error={lineage.error} label="lineage" />
-          )}
-        </LookupPanel>
-
-        <LookupPanel
-          title="Campaign Monitor"
-          icon={<BarChart3 size={17} />}
-          label="Campaign id"
-          value={ids.campaign}
-          onChange={(value) => setIds({ ...ids, campaign: value })}
-          onLoad={() => void loadCampaign()}
-        >
-          {campaign.status === "ready" ? (
-            <div>
-              <strong>{campaign.data.objective}</strong>
-              <div className="miniMetrics">
-                <span>{campaign.data.experiment_count} experiments</span>
-                <span>{campaign.data.rounds_completed} rounds</span>
-                <span>{campaign.data.rejected_strategy_count} rejected</span>
-              </div>
-            </div>
-          ) : (
-            <StateBlock state={campaign.status} error={campaign.error} label="campaign" />
-          )}
-        </LookupPanel>
-
-        <LookupPanel
-          title="Paper Trading"
-          icon={<Scale size={17} />}
-          label="Paper session id"
-          value={ids.paper}
-          onChange={(value) => setIds({ ...ids, paper: value })}
-          onLoad={() => void loadPaper()}
-        >
-          {paper.status === "ready" ? (
-            <div>
-              <strong>{paper.data.strategy_name}</strong>
-              <div className="miniMetrics">
-                <span>{paper.data.status}</span>
-                <span>Equity {numberValue(paper.data.equity)}</span>
-                <span>PnL {numberValue(paper.data.pnl)}</span>
-              </div>
-            </div>
-          ) : (
-            <StateBlock state={paper.status} error={paper.error} label="paper session" />
-          )}
-        </LookupPanel>
-      </section>
-
-      <section className="compare">
-        <Panel title="Champion / Challenger" icon={<LineChart size={17} />}>
-          {workflowEvals.status === "ready" ? (
-            workflowEvals.data.experiments.length ? (
-              workflowEvals.data.experiments.slice(0, 5).map((item) => (
-                <div className="activityItem" key={item.id}>
-                  <span>{item.benchmark_name}</span>
-                  <strong>{item.decision}</strong>
-                  <small>{item.reason}</small>
-                </div>
-              ))
-            ) : (
-              <p className="empty">No workflow challengers have been evaluated.</p>
-            )
-          ) : (
-            <StateBlock state={workflowEvals.status} error={workflowEvals.error} label="workflow evals" />
-          )}
-        </Panel>
-      </section>
+      <section className="section workspace" id="workspace"><div className="sectionHeading sectionHeading--row"><div><span className="kicker">YOUR WORKSPACE</span><h2>Use the real research tools</h2><p>Live records appear here when your local database has them.</p></div><span className="paperBadge">PAPER-ONLY</span></div><div className="workspaceGrid">
+        <article className="workCard workCard--wide"><div className="workCardHeader"><div><span className="workIcon"><Beaker size={18} /></span><h3>Experiments</h3></div><span>{experiments.data?.length ?? 0} available</span></div>{experiments.loading ? <Loading label="Loading experiments" /> : experiments.error ? <ErrorState error={experiments.error} /> : experiments.data?.length ? <div className="experimentList">{experiments.data.map((experiment) => <button key={experiment.id} className={activeExperiment?.id === experiment.id ? "experiment experiment--active" : "experiment"} onClick={() => { setSelectedExperiment(experiment.id); setReproduction({ loading: false }); }}><span className="experimentSymbol">{experiment.symbol}</span><span><strong>{humanize(experiment.strategy_name)}</strong><small>{experiment.status} · {experiment.start_date} → {experiment.end_date}</small></span><span className="experimentMetric">{metric(experiment.metrics.sharpe_ratio)}<small>Sharpe</small></span></button>)}</div> : <EmptyState icon={<Beaker size={20} />} title="No experiments yet" text="Create or ingest research through the API, then return here to review it." action="Open API docs" />}</article>
+        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Start a research run</h3></div><span>Local only</span></div><p className="cardCopy">Run the Trend validation example against a symbol. It creates an auditable local record—never a live order.</p><form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="run-symbol">Symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRun.loading ? "Running…" : "Run example"}</button></div></form>{researchRun.data && <div className="result result--good"><strong>Research run complete</strong><span>Recorded as {researchRun.data.id.slice(0, 8)} · {researchRun.data.status}</span></div>}{researchRun.error && <ErrorState error={researchRun.error} />}</article>
+        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><RotateCcw size={18} /></span><h3>Verify a run</h3></div></div><p className="cardCopy">Re-run the selected experiment and compare its recorded fingerprints and metrics.</p>{activeExperiment ? <><div className="selectedRun"><span>{activeExperiment.symbol}</span><strong>{humanize(activeExperiment.strategy_name)}</strong><small>{activeExperiment.id}</small></div><button className="button button--primary button--full" onClick={() => void runReproduction()} disabled={reproduction.loading}><RotateCcw size={16} /> {reproduction.loading ? "Verifying run…" : "Reproduce this run"}</button></> : <button className="button button--muted button--full" disabled><RotateCcw size={16} /> Select an experiment first</button>}{reproduction.data && <div className={reproduction.data.match ? "result result--good" : "result result--warn"}><strong>{reproduction.data.match ? "Match verified" : "Review differences"}</strong><span>{reproduction.data.blocking_differences.length ? reproduction.data.blocking_differences.join(", ") : "Recorded metrics and fingerprints agree."}</span></div>}{reproduction.error && <ErrorState error={reproduction.error} />}</article>
+        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Database size={18} /></span><h3>Research data</h3></div><span>{datasets.data?.length ?? 0} catalogs</span></div>{datasets.loading ? <Loading label="Loading datasets" /> : datasets.error ? <ErrorState error={datasets.error} /> : datasets.data?.length ? <ul className="compactList">{datasets.data.slice(0, 4).map((dataset) => <li key={dataset.id}><span><strong>{dataset.name}</strong><small>{dataset.versions.length} immutable version{dataset.versions.length === 1 ? "" : "s"}</small></span><GitBranch size={16} /></li>)}</ul> : <EmptyState icon={<Database size={20} />} title="No datasets yet" text="Immutable data snapshots will show up here." />}</article>
+        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><TerminalSquare size={18} /></span><h3>Decision trail</h3></div><span>{decisions.data?.length ?? 0} records</span></div>{decisions.loading ? <Loading label="Loading decisions" /> : decisions.error ? <ErrorState error={decisions.error} /> : decisions.data?.length ? <ul className="compactList">{decisions.data.slice(0, 4).map((decision) => <li key={decision.id}><span><strong>{humanize(decision.decision_type)}</strong><small>{decision.outcome} · hash {decision.content_hash.slice(0, 8)}</small></span><span className={decision.integrity.verified === false ? "integrity integrity--bad" : "integrity"}>{decision.integrity.verified === false ? "Check" : "Verified"}</span></li>)}</ul> : <EmptyState icon={<TerminalSquare size={20} />} title="No decisions yet" text="When a workflow accepts or rejects a candidate, its evidence appears here." />}</article>
+      </div></section>
+      <footer><span>Mercury Research OS</span><span>Built for evidence, constrained to PAPER execution.</span><a href="https://reactbits.dev/" target="_blank" rel="noreferrer">React Bits</a><a href="https://skiper-ui.com/v1/skiper4" target="_blank" rel="noreferrer">Skiper UI</a></footer>
     </main>
   );
 }
 
-function Panel({
-  title,
-  icon,
-  children
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="panel">
-      <header>
-        {icon}
-        <h2>{title}</h2>
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function LookupPanel({
-  title,
-  icon,
-  label,
-  value,
-  onChange,
-  onLoad,
-  children
-}: {
-  title: string;
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onLoad: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Panel title={title} icon={icon}>
-      <div className="lookup">
-        <input aria-label={label} placeholder={label} value={value} onChange={(event) => onChange(event.target.value)} />
-        <button onClick={onLoad}>Load</button>
-      </div>
-      {children}
-    </Panel>
-  );
-}
-
-function MetricColumn({ title, value }: { title: string; value: Record<string, unknown> }) {
-  return (
-    <div className="metricColumn">
-      <h3>{title}</h3>
-      {Object.entries(value)
-        .slice(0, 8)
-        .map(([key, item]) => (
-          <div className="kv" key={key}>
-            <span>{key.replaceAll("_", " ")}</span>
-            <strong>{renderValue(item)}</strong>
-          </div>
-        ))}
-    </div>
-  );
-}
-
-function ChartFrame({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="chartFrame">
-      <h3>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function StateBlock({ state, error, label }: { state: string; error?: string; label: string }) {
-  if (state === "ready" || state === "idle") return null;
-  return (
-    <p className={state === "error" ? "error" : "empty loadingState"} aria-live="polite">
-      {state === "error" ? error : `Loading ${label}`}
-    </p>
-  );
-}
-
-function regimeChartRows(detail: ExperimentDetail | null) {
-  if (!detail) return [];
-  return Object.entries(detail.regime_performance).map(([regime, metrics]) => ({
-    regime,
-    sharpe: numeric(metrics.sharpe_ratio ?? metrics.sharpe),
-    drawdown: numeric(metrics.max_drawdown)
-  }));
-}
-
-function tradeChartRows(detail: ExperimentDetail | null) {
-  if (!detail) return [];
-  return detail.trades.map((trade, index) => ({
-    label: String(index + 1),
-    price: trade.price,
-    side: trade.side
-  }));
-}
-
-function reportChartRows(
-  state: LoadState<ResearchArtifact>,
-  key: "equity_curve" | "drawdown"
-) {
-  if (state.status !== "ready") return [];
-  const rows = state.data.charts[key] ?? [];
-  return rows.map((row, index) => ({
-    ...row,
-    label: String(index + 1)
-  }));
-}
-
-function returnDistributionRows(state: LoadState<ResearchArtifact>) {
-  if (state.status !== "ready") return [];
-  return state.data.charts.return_distribution ?? [];
-}
-
-function formatMetric(value: DashboardMetric["value"], unit?: string | null) {
-  if (value === null) return "n/a";
-  if (typeof value === "number") {
-    return unit === "ratio" ? `${(value * 100).toFixed(1)}%` : money.format(value);
-  }
-  return value;
-}
-
-function MetricValue({ value, unit }: { value: DashboardMetric["value"]; unit?: string | null }) {
-  if (typeof value === "number" && unit !== "ratio" && Number.isInteger(value)) {
-    return <CountUp to={value} duration={0.55} separator="," />;
-  }
-  return <>{formatMetric(value, unit)}</>;
-}
-
-function numberValue(value: unknown) {
-  const parsed = numeric(value);
-  return parsed === null ? "n/a" : money.format(parsed);
-}
-
-function numeric(value: unknown) {
-  return typeof value === "number" ? value : null;
-}
-
-function renderValue(value: unknown) {
-  if (typeof value === "number") return money.format(value);
-  if (typeof value === "string") return value;
-  if (value === null || value === undefined) return "n/a";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
+function settle<T, U = T>(result: PromiseSettledResult<T>, set: (value: Status<U>) => void, transform?: (value: T) => U) { if (result.status === "fulfilled") set({ loading: false, data: transform ? transform(result.value) : (result.value as unknown as U) }); else set({ loading: false, error: message(result.reason) }); }
+function message(error: unknown) { return error instanceof Error ? error.message : "Could not load this live resource."; }
+function humanize(value: string) { return value.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+function metric(value: unknown) { return typeof value === "number" ? value.toFixed(2) : "—"; }
+function StatusRow({ label, value, ok }: { label: string; value: string; ok: boolean }) { return <div className="statusRow"><span>{label}</span><strong className={ok ? "ok" : "pending"}>{ok && <CheckCircle2 size={14} />}{value}</strong></div>; }
+function Stat({ label, value, loading }: { label: string; value: number; loading: boolean }) { return <div className="stat"><span>{label}</span><strong>{loading ? "—" : <CountUp to={value} duration={0.45} separator="," />}</strong></div>; }
+function FlowStep({ icon, number, title, text }: { icon: React.ReactNode; number: string; title: string; text: string }) { return <article className="flowStep"><span className="flowNumber">{number}</span><div className="flowIcon">{icon}</div><h3>{title}</h3><p>{text}</p></article>; }
+function Loading({ label }: { label: string }) { return <div className="placeholder"><span className="loader" />{label}</div>; }
+function ErrorState({ error }: { error: string }) { return <div className="errorState"><strong>Couldn’t load this resource.</strong><span>{error}</span></div>; }
+function EmptyState({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: string }) { return <div className="emptyState"><span>{icon}</span><strong>{title}</strong><p>{text}</p>{action && <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">{action} <ArrowRight size={14} /></a>}</div>; }
