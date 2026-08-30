@@ -45,3 +45,48 @@ Python-vs-C++ comparison and retain unfavorable or neutral cases.
 Memory and worker scaling are not claimed from this unit benchmark. Measure them
 separately with the actual worker topology, data source, and database because
 serialization, PostgreSQL, and queue leases can become the next bottleneck.
+
+## System profiling capture
+
+Stage 7 adds a local profiling harness for deterministic API routing,
+Python backtesting, strategy-DSL evaluation, optimization candidate generation,
+Monte Carlo bootstrap work, and JSON serialization:
+
+```bash
+python scripts/profile_system.py --rows 100000 --repeats 5 \
+  --output results/benchmarks/system-profile.json
+```
+
+It records median, p95, and minimum wall time after one excluded warm-up.  The
+output is intentionally ignored by Git because hardware, Python build, and
+installed native extensions affect it.  Retain each capture alongside the
+machine and workload details when comparing a proposed optimization.
+
+The capture explicitly labels database, worker-pool, dashboard-query, and ML
+training measurements as unmeasured.  Those require a PostgreSQL deployment,
+matched campaign workload, production-shaped persisted data, and a versioned
+training configuration respectively.  Do not extrapolate the local harness to
+those surfaces.
+
+The current profiling pass adds no algorithmic optimization: its purpose is to
+make a measured bottleneck a prerequisite for future SQL, batching, caching,
+Polars, native-engine, or worker-tuning changes.
+
+### Stage 7 measured change
+
+The first local capture identified Monte Carlo bootstrap work as the dominant
+measured in-process path.  The bootstrap previously built every block through
+Python generators and converted each simulated path through Polars before
+computing metrics.  It now uses deterministic NumPy block-index arrays and
+NumPy-only path metrics, preserving the seeded circular-block algorithm and
+returned metric schema.
+
+On the Stage 7 Windows capture (`10,000` returns, `100` simulations, three
+repeats), median `monte_carlo_bootstrap` time changed from `841.8718 ms` to
+`16.8448 ms` (approximately 50x faster).  This is a machine-local comparison,
+not a production latency claim:
+
+```bash
+python scripts/profile_system.py --rows 10000 --repeats 3 \
+  --output results/benchmarks/stage7-local-profile.json
+```

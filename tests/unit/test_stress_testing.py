@@ -37,6 +37,15 @@ def test_block_bootstrap_is_seeded_and_aggregated() -> None:
     }
 
 
+def test_vectorized_block_bootstrap_preserves_circular_block_sequence() -> None:
+    returns = [0.01, -0.02, 0.015, 0.005, -0.01, 0.02]
+    samples = block_bootstrap(returns, block_size=2, simulations=3, seed=17)
+
+    assert samples == block_bootstrap(returns, block_size=2, simulations=3, seed=17)
+    expected_metrics = {"total_return", "sharpe_ratio", "max_drawdown", "volatility"}
+    assert all(set(sample) == expected_metrics for sample in samples)
+
+
 def test_robustness_flags_concentration_and_correlation_stress() -> None:
     baseline = path_metrics([0.01, 0.01, 0.01])
     concentration = performance_concentration([0.01, 0.0, 0.0], ["a", "b", "c"])
