@@ -421,8 +421,11 @@ class CampaignService:
         self.session.execute(
             delete(StrategyRanking).where(StrategyRanking.campaign_id == campaign.id)
         )
-        ranked_rows = sorted((score_experiment(experiment), experiment) for experiment in completed)
-        ranked_rows.reverse()
+        ranked_rows = sorted(
+            ((score_experiment(experiment), experiment) for experiment in completed),
+            key=lambda item: (item[0][0], str(item[1].id)),
+            reverse=True,
+        )
         rankings: list[StrategyRanking] = []
         for index, ((score, components, reason), experiment) in enumerate(ranked_rows, start=1):
             rankings.append(
