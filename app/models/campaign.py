@@ -36,6 +36,7 @@ class ResearchCampaign(Base):
     budget_used: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     generated_hypotheses: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    research_queue: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     candidate_strategies: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     rejected_strategies: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     final_conclusions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

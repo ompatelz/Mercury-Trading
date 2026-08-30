@@ -77,6 +77,7 @@ class CampaignService:
             },
             status="created",
             generated_hypotheses=[],
+            research_queue=[],
             candidate_strategies=[],
             rejected_strategies=[],
             final_conclusions={},
