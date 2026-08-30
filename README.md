@@ -72,7 +72,9 @@ Set a real local `POSTGRES_PASSWORD` in `.env`, then start the local stack:
 docker compose up --build
 ```
 
-The API is exposed at `http://localhost:8000`. In a separate shell, start the dashboard:
+Compose runs migrations once before starting the API and worker, preventing a
+startup migration race. The API is exposed at `http://localhost:8000`. In a
+separate shell, start the dashboard:
 
 ```powershell
 pnpm --dir frontend install
