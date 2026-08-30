@@ -38,6 +38,11 @@ button:hover {
   border-color: #1f7a8c;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 input {
   min-height: 36px;
   border: 1px solid #c8d4d8;
@@ -59,6 +64,24 @@ input {
   align-items: center;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.componentCredit {
+  color: #5c6d74;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.componentCredit:hover,
+.componentCredit:focus-visible {
+  color: #1f7a8c;
+  text-decoration: underline;
 }
 
 .sectionNav {
@@ -120,6 +143,22 @@ h3 {
   padding: 0;
   display: inline-grid;
   place-items: center;
+}
+
+.themeToggle {
+  width: 38px;
+  padding: 8px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.themeToggle svg {
+  width: 19px;
+  height: 19px;
+}
+
+.refreshing {
+  animation: refresh-spin 0.9s linear infinite;
 }
 
 .metrics {
@@ -273,6 +312,19 @@ tbody tr {
   color: #5c6d74;
   margin: 4px 0 0;
   font-size: 0.86rem;
+}
+
+.loadingState::after {
+  content: "";
+  display: inline-block;
+  width: 34px;
+  height: 0.7em;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e8eff1 25%, #f8fafb 45%, #e8eff1 65%);
+  background-size: 220% 100%;
+  animation: loading-sheen 1.4s ease-in-out infinite;
+  vertical-align: middle;
 }
 
 .dot {
@@ -437,6 +489,81 @@ tbody tr {
   color: #9b2c2c;
 }
 
+.themeDark {
+  color: #e7eef1;
+}
+
+.themeDark .sectionNav a,
+.themeDark .miniMetrics span,
+.themeDark .node span,
+.themeDark .decisionMeta span,
+.themeDark .ruleList span {
+  color: #b8dce2;
+  background: #17333a;
+}
+
+.themeDark .metric,
+.themeDark .panel,
+.themeDark input,
+.themeDark button,
+.themeDark .reportActions a,
+.themeDark .reportActions button {
+  color: #e7eef1;
+  background: #13252b;
+  border-color: #29434b;
+}
+
+.themeDark th {
+  color: #bfd0d5;
+  background: #182d34;
+}
+
+.themeDark .tableWrap,
+.themeDark th,
+.themeDark td,
+.themeDark .panel > header,
+.themeDark .health,
+.themeDark .activityItem,
+.themeDark .node,
+.themeDark .lesson,
+.themeDark .weaknesses,
+.themeDark .decisionItem,
+.themeDark .metricColumn,
+.themeDark .kv,
+.themeDark .reproduction {
+  border-color: #29434b;
+}
+
+.themeDark .metric span,
+.themeDark .kv span,
+.themeDark .activityItem span,
+.themeDark .node small,
+.themeDark .health p,
+.themeDark .activityItem small,
+.themeDark .decisionItem small,
+.themeDark .lesson p,
+.themeDark .compare p,
+.themeDark .empty,
+.themeDark .componentCredit {
+  color: #a9bcc2;
+}
+
+.themeDark tr.selected {
+  background: #173b45;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loading-sheen {
+  to {
+    background-position: -220% 0;
+  }
+}
+
 @media (max-width: 980px) {
   .two,
   .three,
@@ -454,6 +581,10 @@ tbody tr {
   .shell {
     width: min(100% - 20px, 1500px);
     padding-top: 14px;
+  }
+
+  .componentCredit {
+    display: none;
   }
 
   .filters {

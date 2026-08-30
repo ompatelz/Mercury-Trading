@@ -37,6 +37,8 @@ import {
   listExperiments,
   reproduceExperiment
 } from "./api";
+import CountUp from "./components/CountUp";
+import { SkiperThemeToggle } from "./components/SkiperThemeToggle";
 import type {
   CampaignDashboard,
   Decision,
@@ -80,16 +82,29 @@ export function App() {
   });
   const [filters, setFilters] = useState({ symbol: "", status: "", strategy_family: "" });
   const [ids, setIds] = useState({ strategy: "", campaign: "", paper: "" });
+  const [isDark, setIsDark] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    void refreshOverview();
-    void refreshExperiments();
-    void refreshWorkflowEvals();
-    void refreshDecisions();
-    void refreshDataCatalog();
+    void refreshAll();
     // The initial load should not refetch while users type filters; Apply controls refresh timing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function refreshAll() {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refreshOverview(),
+        refreshExperiments(),
+        refreshWorkflowEvals(),
+        refreshDecisions(),
+        refreshDataCatalog()
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     if (selectedExperimentId) {
@@ -211,15 +226,26 @@ export function App() {
   }
 
   return (
-    <main className="shell">
+    <main className={`shell ${isDark ? "themeDark" : ""}`}>
       <header className="topbar">
         <div>
           <p className="eyebrow">Mercury</p>
           <h1>Research Dashboard</h1>
         </div>
-        <button className="iconButton" onClick={() => void refreshOverview()} aria-label="Refresh">
-          <RefreshCw size={18} />
-        </button>
+        <div className="topbarActions">
+          <a className="componentCredit" href="https://skiper-ui.com/v1/skiper4">
+            Theme toggle by Skiper UI
+          </a>
+          <SkiperThemeToggle isDark={isDark} onToggle={() => setIsDark((value) => !value)} />
+          <button
+            className="iconButton"
+            onClick={() => void refreshAll()}
+            aria-label="Refresh dashboard data"
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={isRefreshing ? "refreshing" : ""} size={18} />
+          </button>
+        </div>
       </header>
 
       <nav className="sectionNav" aria-label="Dashboard sections">
@@ -235,7 +261,9 @@ export function App() {
           overview.data.metrics.map((metric) => (
             <article className="metric" key={metric.label}>
               <span>{metric.label}</span>
-              <strong>{formatMetric(metric.value, metric.unit)}</strong>
+              <strong>
+                <MetricValue value={metric.value} unit={metric.unit} />
+              </strong>
             </article>
           ))
         ) : (
@@ -719,7 +747,11 @@ function ChartFrame({ title, children }: { title: string; children: React.ReactN
 
 function StateBlock({ state, error, label }: { state: string; error?: string; label: string }) {
   if (state === "ready" || state === "idle") return null;
-  return <p className={state === "error" ? "error" : "empty"}>{state === "error" ? error : `Loading ${label}`}</p>;
+  return (
+    <p className={state === "error" ? "error" : "empty loadingState"} aria-live="polite">
+      {state === "error" ? error : `Loading ${label}`}
+    </p>
+  );
 }
 
 function regimeChartRows(detail: ExperimentDetail | null) {
@@ -763,6 +795,13 @@ function formatMetric(value: DashboardMetric["value"], unit?: string | null) {
     return unit === "ratio" ? `${(value * 100).toFixed(1)}%` : money.format(value);
   }
   return value;
+}
+
+function MetricValue({ value, unit }: { value: DashboardMetric["value"]; unit?: string | null }) {
+  if (typeof value === "number" && unit !== "ratio" && Number.isInteger(value)) {
+    return <CountUp to={value} duration={0.55} separator="," />;
+  }
+  return <>{formatMetric(value, unit)}</>;
 }
 
 function numberValue(value: unknown) {
