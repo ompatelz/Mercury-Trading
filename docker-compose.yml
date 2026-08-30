@@ -3,8 +3,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_DB: mercury
-      POSTGRES_USER: mercury
-      POSTGRES_PASSWORD: mercury
+      POSTGRES_USER: ${POSTGRES_USER:-mercury}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     ports:
       - "5432:5432"
     healthcheck:
@@ -18,7 +18,7 @@ services:
   api:
     build: .
     environment:
-      DATABASE_URL: postgresql+psycopg://mercury:mercury@db:5432/mercury
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mercury}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/mercury
       YAHOO_AUTO_ADJUST: "false"
     ports:
       - "8000:8000"
@@ -30,7 +30,7 @@ services:
     build: .
     command: sh -c "alembic upgrade head && python scripts/run_worker.py --worker-name docker-worker"
     environment:
-      DATABASE_URL: postgresql+psycopg://mercury:mercury@db:5432/mercury
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mercury}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/mercury
       YAHOO_AUTO_ADJUST: "false"
     depends_on:
       db:

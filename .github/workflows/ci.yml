@@ -170,6 +170,8 @@ jobs:
       - name: Build Docker image
         run: docker build .
       - name: Validate Compose worker topology
+        env:
+          POSTGRES_PASSWORD: ci-placeholder-not-a-secret
         run: docker compose config --quiet
 
   repo-hygiene:
@@ -185,3 +187,25 @@ jobs:
             echo "Do not commit .env files"
             exit 1
           fi
+      - name: Scan for private keys and common API-token formats
+        run: |
+          if git grep -n -I -E '-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}'; then
+            echo "Potential credential material detected"
+            exit 1
+          fi
+
+  dependency-security:
+    name: Dependency Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install audit tooling and project dependencies
+        run: pip install pip-audit && pip install -e ".[dev]"
+      - name: Audit installed Python dependencies
+        run: pip-audit
