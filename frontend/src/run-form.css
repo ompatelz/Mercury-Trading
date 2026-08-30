@@ -1,0 +1,6 @@
+.runForm { display: grid; gap: 7px; margin-top: 18px; }
+.runForm label { color: var(--subtle); font: 500 9px "DM Mono", monospace; letter-spacing: .08em; }
+.runForm > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.runForm input { min-width: 0; border: 1px solid var(--line); border-radius: 9px; padding: 0 11px; color: var(--text); background: var(--surface-2); font: 700 .8rem "DM Mono", monospace; }
+.runForm .button { min-height: 39px; }
+@media (max-width: 560px) { .runForm > div { grid-template-columns: 1fr; } }

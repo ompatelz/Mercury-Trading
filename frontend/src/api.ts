@@ -25,8 +25,12 @@ async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function postJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "POST" });
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
   }
@@ -51,6 +55,24 @@ export function getExperimentReport(id: string): Promise<ResearchArtifact> {
 
 export function reproduceExperiment(id: string): Promise<ReproductionResult> {
   return postJson(`/experiments/${id}/reproduce`);
+}
+
+export type ResearchRunRequest = {
+  objective: string;
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  interval: string;
+  initial_capital: number;
+  transaction_cost_bps: number;
+  slippage_bps: number;
+  execution_engine: string;
+};
+
+export type ResearchRunResponse = { id: string; status: string; backtest_experiment_id: string | null };
+
+export function runResearchExperiment(request: ResearchRunRequest): Promise<ResearchRunResponse> {
+  return postJson("/research/experiments", request);
 }
 
 export function getLineage(strategyId: string): Promise<Lineage> {

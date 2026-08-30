@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("opens an experiment and shows metrics, chart areas, regime state, and lineage", async ({
+test("shows the dark guided workspace and lets a user select a real experiment", async ({
   page
 }) => {
   await page.route("**/dashboard/overview", async (route) => {
@@ -108,16 +108,9 @@ test("opens an experiment and shows metrics, chart areas, regime state, and line
   });
 
   await page.goto("/");
-  await expect(page.getByText("moving_average_crossover")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Performance", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Measured Result", exact: true })).toBeVisible();
-  await expect(page.getByText("Equity Curve")).toBeVisible();
-  await expect(page.getByText("Regime Performance")).toBeVisible();
-  await expect(page.getByTestId("regime-weaknesses")).toContainText(
-    "No persisted weakness flags"
-  );
-
-  await page.getByLabel("Strategy candidate id").fill("strategy-1");
-  await page.getByRole("button", { name: "Load" }).first().click();
-  await expect(page.getByTestId("strategy-lineage")).toContainText("promote");
+  await expect(page.getByText("Turn an idea into")).toBeVisible();
+  await expect(page.getByText("How Mercury works")).toBeVisible();
+  await expect(page.getByText("Learn through examples")).toBeVisible();
+  await expect(page.getByText("Moving Average Crossover")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reproduce this run" })).toBeVisible();
 });

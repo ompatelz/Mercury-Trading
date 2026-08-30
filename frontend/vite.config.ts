@@ -5,7 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/dashboard": "http://127.0.0.1:8000"
+      "/dashboard": "http://127.0.0.1:8000",
+      "/datasets": "http://127.0.0.1:8000",
+      "/decisions": "http://127.0.0.1:8000",
+      "/experiments": "http://127.0.0.1:8000",
+      "/research": "http://127.0.0.1:8000"
     }
   },
   test: {
