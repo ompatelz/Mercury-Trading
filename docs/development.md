@@ -34,6 +34,11 @@ docker build .
 docker compose up --build
 ```
 
+Compose runs its dedicated `migrations` service before the API and campaign
+worker. When running the image outside Compose, run `alembic upgrade head`
+against the target database as a separate deployment step before starting the
+application container.
+
 ## Useful API Checks
 
 ```bash

@@ -15,6 +15,15 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  migrations:
+    build: .
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mercury}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/mercury
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build: .
     environment:
@@ -23,18 +32,18 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
 
   worker:
     build: .
-    command: sh -c "alembic upgrade head && python scripts/run_worker.py --worker-name docker-worker"
+    command: python scripts/run_worker.py --worker-name docker-worker
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mercury}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/mercury
       YAHOO_AUTO_ADJUST: "false"
     depends_on:
-      db:
-        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:

@@ -59,6 +59,8 @@ jobs:
         run: pnpm --dir frontend test
       - name: Build
         run: pnpm --dir frontend build
+      - name: Production dependency audit
+        run: pnpm --dir frontend audit --prod
       - name: Install Playwright browser
         run: pnpm --dir frontend exec playwright install --with-deps chromium
       - name: End-to-end tests
