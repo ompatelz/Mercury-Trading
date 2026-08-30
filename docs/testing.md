@@ -45,3 +45,10 @@ Regime and evolution tests cover:
 - memory-influenced mutation provenance
 - fitness and champion/challenger rules
 - persisted evolution lineage and reports
+# CI quality gates
+
+Normal CI uses deterministic fixtures only: no paid model calls, live market
+feeds, or large optimization workloads. It validates Python quality and tests,
+the canonical PAPER-only mission, native-engine build/parity, frontend checks,
+clean PostgreSQL migrations, campaign-worker recovery, dependency security,
+Docker image build, Compose configuration, and an API readiness smoke test.
