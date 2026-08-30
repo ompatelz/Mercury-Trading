@@ -179,7 +179,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: ci-placeholder-not-a-secret
         run: |
-          docker compose up --build -d
+          docker compose up --build -d db api
           trap 'docker compose down --volumes' EXIT
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://localhost:8000/health; then exit 0; fi
