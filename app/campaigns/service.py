@@ -273,6 +273,61 @@ class CampaignService:
         self.session.flush()
         return len(jobs)
 
+    def recover_interrupted_campaigns(self) -> int:
+        """Restore missing durable jobs after a worker or process interruption.
+
+        A job is recreated only when its planned experiment has never had a job.
+        Existing jobs, including exhausted failures, remain the source of truth so
+        recovery cannot duplicate an experiment or silently reopen a failure.
+        """
+        campaigns = list(
+            self.session.scalars(
+                select(ResearchCampaign).where(ResearchCampaign.status.in_(["queued", "running"]))
+            )
+        )
+        recovered = 0
+        for campaign in campaigns:
+            jobs = self.list_jobs(campaign.id)
+            job_experiment_ids = {
+                job.campaign_experiment_id for job in jobs if job.campaign_experiment_id is not None
+            }
+            missing = [
+                experiment
+                for experiment in self.list_experiments(campaign.id)
+                if experiment.status == "planned" and experiment.id not in job_experiment_ids
+            ]
+            restored_jobs: list[CampaignJob] = []
+            for experiment in missing:
+                job = self._create_job(
+                    campaign=campaign,
+                    campaign_experiment=experiment,
+                    job_type="RUN_BACKTEST",
+                    payload={"version": 1, "campaign_experiment_id": str(experiment.id)},
+                    idempotency_key=f"backtest:{experiment.id}",
+                )
+                if job is not None:
+                    restored_jobs.append(job)
+            if restored_jobs:
+                campaign.status = "queued"
+                recovered += len(restored_jobs)
+                DecisionService(self.session).record(
+                    decision_type="CAMPAIGN_RECOVERY",
+                    outcome="JOBS_RESTORED",
+                    actor="CampaignService",
+                    reason=(
+                        "Interrupted campaign jobs were safely restored from planned experiments."
+                    ),
+                    campaign_id=campaign.id,
+                    correlation_id=str(campaign.id),
+                    inputs={"campaign_status": campaign.status},
+                    metrics={"jobs_restored": len(restored_jobs)},
+                    provenance={"job_ids": [str(job.id) for job in restored_jobs]},
+                    versions={"campaign_recovery": "v1"},
+                )
+            self._refresh_campaign_state(campaign.id)
+        self.session.flush()
+        return recovered
+
     def list_experiments(self, campaign_id: UUID) -> list[CampaignExperiment]:
         return list(
             self.session.scalars(

@@ -194,6 +194,76 @@ def test_deterministic_job_failure_is_not_retried(db_session: Session) -> None:
     assert result.error_type == "ValueError"
 
 
+def test_transient_database_failure_retries_without_duplicate_experiment(
+    db_session: Session, monkeypatch
+) -> None:
+    _seed_bars(db_session, symbol="MSFT", days=45)
+    service = CampaignService(db_session)
+    campaign = service.create_campaign(
+        CampaignCreateRequest(
+            objective="Can temporary database failures recover safely?",
+            symbols=["MSFT"],
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 15),
+            budget={"max_experiments": 1, "max_optimization_trials": 1},
+            parameter_space={"short_window": [2], "long_window": [5]},
+        )
+    )
+    job = service.run_campaign(campaign.id)[0]
+    original = service._run_campaign_experiment
+    attempts = 0
+
+    def fail_once(current_job: CampaignJob) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ConnectionError("database temporarily unavailable")
+        original(current_job)
+
+    monkeypatch.setattr(service, "_run_campaign_experiment", fail_once)
+    first = service.process_next_job("worker-a")
+
+    assert first is not None
+    assert first.status == "RETRYING"
+    assert first.id == job.id
+    first.available_at = service._database_now()
+    second = service.process_next_job("worker-b")
+
+    assert second is not None
+    assert second.status == "SUCCEEDED"
+    assert attempts == 2
+    assert len(service.list_jobs(campaign.id)) == 1
+    assert (
+        len([item for item in service.list_experiments(campaign.id) if item.status == "completed"])
+        == 1
+    )
+
+
+def test_interrupted_campaign_restores_only_missing_durable_jobs(db_session: Session) -> None:
+    service = CampaignService(db_session)
+    campaign = service.create_campaign(
+        CampaignCreateRequest(
+            objective="Can an interrupted submission recover without duplicates?",
+            symbols=["MSFT"],
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 2, 15),
+            budget={"max_experiments": 2, "max_optimization_trials": 2},
+            parameter_space={"short_window": [2, 3], "long_window": [5]},
+        )
+    )
+    jobs = service.run_campaign(campaign.id)
+    missing_job = jobs.pop()
+    db_session.delete(missing_job)
+    db_session.flush()
+
+    assert service.recover_interrupted_campaigns() == 1
+    restored = service.list_jobs(campaign.id)
+
+    assert len(restored) == 2
+    assert len({job.idempotency_key for job in restored}) == 2
+    assert len({job.campaign_experiment_id for job in restored}) == 2
+
+
 def _seed_bars(session: Session, symbol: str, days: int) -> None:
     start = datetime(2024, 1, 1)
     bars = []

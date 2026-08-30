@@ -18,6 +18,7 @@ def main() -> None:
         with SessionLocal() as session:
             service = CampaignService(session)
             service.recover_stale_jobs(args.stale_after_seconds)
+            service.recover_interrupted_campaigns()
             job = service.claim_next_job(args.worker_name)
             session.commit()
         if job is None:
