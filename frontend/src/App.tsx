@@ -18,7 +18,7 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { getOverview, listDatasetCatalog, listDecisions, listExperiments, reproduceExperiment, runResearchExperiment } from "./api";
+import { getOverview, ingestMarketData, listDatasetCatalog, listDecisions, listExperiments, reproduceExperiment, runResearchExperiment } from "./api";
 import CountUp from "./components/CountUp";
 import { SkiperThemeToggle } from "./components/SkiperThemeToggle";
 import type { DashboardOverview, DatasetCatalogItem, Decision, ExperimentListItem, ReproductionResult } from "./types";
@@ -41,6 +41,7 @@ export function App() {
   const [selectedExample, setSelectedExample] = useState(0);
   const [reproduction, setReproduction] = useState<Status<ReproductionResult>>({ loading: false });
   const [researchRun, setResearchRun] = useState<Status<{ id: string; status: string }>>({ loading: false });
+  const [researchRunStep, setResearchRunStep] = useState<"idle" | "ingesting" | "running">("idle");
   const [runSymbol, setRunSymbol] = useState("MSFT");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -75,10 +76,14 @@ export function App() {
   async function startResearchRun(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setResearchRun({ loading: true });
+    const symbol = runSymbol.trim().toUpperCase();
     try {
+      setResearchRunStep("ingesting");
+      await ingestMarketData({ symbol, start: "2023-01-01", end: "2024-01-01", interval: "1d" });
+      setResearchRunStep("running");
       const result = await runResearchExperiment({
         objective: "Test a simple moving-average trend strategy with documented costs and reproducible assumptions.",
-        symbol: runSymbol.trim().toUpperCase(),
+        symbol,
         start_date: "2023-01-01",
         end_date: "2024-01-01",
         interval: "1d",
@@ -90,6 +95,7 @@ export function App() {
       setResearchRun({ loading: false, data: result });
       await refreshWorkspace();
     } catch (error) { setResearchRun({ loading: false, error: message(error) }); }
+    finally { setResearchRunStep("idle"); }
   }
 
   return (
@@ -124,7 +130,7 @@ export function App() {
 
       <section className="section workspace" id="workspace"><div className="sectionHeading sectionHeading--row"><div><span className="kicker">YOUR WORKSPACE</span><h2>Use the real research tools</h2><p>Live records appear here when your local database has them.</p></div><span className="paperBadge">PAPER-ONLY</span></div><div className="workspaceGrid">
         <article className="workCard workCard--wide"><div className="workCardHeader"><div><span className="workIcon"><Beaker size={18} /></span><h3>Experiments</h3></div><span>{experiments.data?.length ?? 0} available</span></div>{experiments.loading ? <Loading label="Loading experiments" /> : experiments.error ? <ErrorState error={experiments.error} /> : experiments.data?.length ? <div className="experimentList">{experiments.data.map((experiment) => <button key={experiment.id} className={activeExperiment?.id === experiment.id ? "experiment experiment--active" : "experiment"} onClick={() => { setSelectedExperiment(experiment.id); setReproduction({ loading: false }); }}><span className="experimentSymbol">{experiment.symbol}</span><span><strong>{humanize(experiment.strategy_name)}</strong><small>{experiment.status} · {experiment.start_date} → {experiment.end_date}</small></span><span className="experimentMetric">{metric(experiment.metrics.sharpe_ratio)}<small>Sharpe</small></span></button>)}</div> : <EmptyState icon={<Beaker size={20} />} title="No experiments yet" text="Create or ingest research through the API, then return here to review it." action="Open API docs" />}</article>
-        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Start a research run</h3></div><span>Local only</span></div><p className="cardCopy">Run the Trend validation example against a symbol. It creates an auditable local record—never a live order.</p><form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="run-symbol">Symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRun.loading ? "Running…" : "Run example"}</button></div></form>{researchRun.data && <div className="result result--good"><strong>Research run complete</strong><span>Recorded as {researchRun.data.id.slice(0, 8)} · {researchRun.data.status}</span></div>}{researchRun.error && <ErrorState error={researchRun.error} />}</article>
+        <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Start a research run</h3></div><span>Local only</span></div><p className="cardCopy">Run the Trend validation example against a symbol. Mercury first ingests the required price data, then creates an auditable research record—never a live order.</p><form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="run-symbol">Symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRunStep === "ingesting" ? "Preparing data…" : researchRunStep === "running" ? "Running research…" : "Run example"}</button></div></form>{researchRun.data && <div className="result result--good"><strong>Research run complete</strong><span>Recorded as {researchRun.data.id.slice(0, 8)} · {researchRun.data.status}</span></div>}{researchRun.error && <ErrorState title="Research run couldn't start" error={researchRun.error} />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><RotateCcw size={18} /></span><h3>Verify a run</h3></div></div><p className="cardCopy">Re-run the selected experiment and compare its recorded fingerprints and metrics.</p>{activeExperiment ? <><div className="selectedRun"><span>{activeExperiment.symbol}</span><strong>{humanize(activeExperiment.strategy_name)}</strong><small>{activeExperiment.id}</small></div><button className="button button--primary button--full" onClick={() => void runReproduction()} disabled={reproduction.loading}><RotateCcw size={16} /> {reproduction.loading ? "Verifying run…" : "Reproduce this run"}</button></> : <button className="button button--muted button--full" disabled><RotateCcw size={16} /> Select an experiment first</button>}{reproduction.data && <div className={reproduction.data.match ? "result result--good" : "result result--warn"}><strong>{reproduction.data.match ? "Match verified" : "Review differences"}</strong><span>{reproduction.data.blocking_differences.length ? reproduction.data.blocking_differences.join(", ") : "Recorded metrics and fingerprints agree."}</span></div>}{reproduction.error && <ErrorState error={reproduction.error} />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Database size={18} /></span><h3>Research data</h3></div><span>{datasets.data?.length ?? 0} catalogs</span></div>{datasets.loading ? <Loading label="Loading datasets" /> : datasets.error ? <ErrorState error={datasets.error} /> : datasets.data?.length ? <ul className="compactList">{datasets.data.slice(0, 4).map((dataset) => <li key={dataset.id}><span><strong>{dataset.name}</strong><small>{dataset.versions.length} immutable version{dataset.versions.length === 1 ? "" : "s"}</small></span><GitBranch size={16} /></li>)}</ul> : <EmptyState icon={<Database size={20} />} title="No datasets yet" text="Immutable data snapshots will show up here." />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><TerminalSquare size={18} /></span><h3>Decision trail</h3></div><span>{decisions.data?.length ?? 0} records</span></div>{decisions.loading ? <Loading label="Loading decisions" /> : decisions.error ? <ErrorState error={decisions.error} /> : decisions.data?.length ? <ul className="compactList">{decisions.data.slice(0, 4).map((decision) => <li key={decision.id}><span><strong>{humanize(decision.decision_type)}</strong><small>{decision.outcome} · hash {decision.content_hash.slice(0, 8)}</small></span><span className={decision.integrity.verified === false ? "integrity integrity--bad" : "integrity"}>{decision.integrity.verified === false ? "Check" : "Verified"}</span></li>)}</ul> : <EmptyState icon={<TerminalSquare size={20} />} title="No decisions yet" text="When a workflow accepts or rejects a candidate, its evidence appears here." />}</article>
@@ -142,5 +148,5 @@ function StatusRow({ label, value, ok }: { label: string; value: string; ok: boo
 function Stat({ label, value, loading }: { label: string; value: number; loading: boolean }) { return <div className="stat"><span>{label}</span><strong>{loading ? "—" : <CountUp to={value} duration={0.45} separator="," />}</strong></div>; }
 function FlowStep({ icon, number, title, text }: { icon: React.ReactNode; number: string; title: string; text: string }) { return <article className="flowStep"><span className="flowNumber">{number}</span><div className="flowIcon">{icon}</div><h3>{title}</h3><p>{text}</p></article>; }
 function Loading({ label }: { label: string }) { return <div className="placeholder"><span className="loader" />{label}</div>; }
-function ErrorState({ error }: { error: string }) { return <div className="errorState"><strong>Couldn’t load this resource.</strong><span>{error}</span></div>; }
+function ErrorState({ error, title = "Couldn’t load this resource." }: { error: string; title?: string }) { return <div className="errorState"><strong>{title}</strong><span>{error}</span></div>; }
 function EmptyState({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: string }) { return <div className="emptyState"><span>{icon}</span><strong>{title}</strong><p>{text}</p>{action && <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">{action} <ArrowRight size={14} /></a>}</div>; }
