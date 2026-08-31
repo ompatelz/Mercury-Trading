@@ -86,6 +86,9 @@ export type ResearchRunResponse = {
   id: string;
   objective: string;
   symbol: string;
+  start_date: string;
+  end_date: string;
+  interval: string;
   status: string;
   backtest_experiment_id: string | null;
   hypothesis: { hypothesis?: string; expected_behavior?: string };
@@ -119,6 +122,12 @@ export function runResearchExperiment(request: ResearchRunRequest): Promise<Rese
 
 export function listResearchExperiments(): Promise<ResearchRunResponse[]> {
   return getJson("/research/experiments?limit=6");
+}
+
+export type PaperSimulationResponse = { id: string; execution_mode: string; status: string; metrics: Record<string, unknown> };
+
+export function startPaperSimulation(request: { symbol: string; start: string; end: string; interval: string; strategy_name: string; strategy_parameters: Record<string, number> }): Promise<PaperSimulationResponse> {
+  return postJson("/paper-trading/sessions", request);
 }
 
 export function getLineage(strategyId: string): Promise<Lineage> {
