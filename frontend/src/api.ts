@@ -82,7 +82,16 @@ export type ResearchRunRequest = {
   execution_engine: string;
 };
 
-export type ResearchRunResponse = { id: string; status: string; backtest_experiment_id: string | null };
+export type ResearchRunResponse = {
+  id: string;
+  status: string;
+  backtest_experiment_id: string | null;
+  hypothesis: { hypothesis?: string; expected_behavior?: string };
+  strategy: { strategy?: string; parameters?: Record<string, unknown> };
+  metrics: Record<string, unknown>;
+  evaluation: { interpretation?: string; risk_findings?: string[] };
+  critique: { suggested_next_experiment?: string };
+};
 
 export type MarketDataIngestRequest = {
   symbol: string;
