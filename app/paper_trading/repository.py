@@ -18,6 +18,15 @@ class PaperTradingRepository:
     def get_session(self, session_id: UUID) -> PaperTradingSession | None:
         return self.session.get(PaperTradingSession, session_id)
 
+    def list_sessions(self, *, limit: int) -> list[PaperTradingSession]:
+        return list(
+            self.session.scalars(
+                select(PaperTradingSession)
+                .order_by(PaperTradingSession.started_at.desc())
+                .limit(limit)
+            )
+        )
+
     def list_orders(self, session_id: UUID) -> list[PaperOrderRecord]:
         return list(
             self.session.scalars(

@@ -133,6 +133,10 @@ export function listResearchExperiments(): Promise<ResearchRunResponse[]> {
 
 export type PaperSimulationResponse = { id: string; execution_mode: string; status: string; metrics: Record<string, unknown> };
 
+export type PaperSessionSummary = PaperSimulationResponse & { symbol: string; strategy_name: string; started_at: string };
+
+export function listPaperSessions(): Promise<PaperSessionSummary[]> { return getJson("/paper-trading/sessions?limit=4"); }
+
 export function startPaperSimulation(request: { symbol: string; start: string; end: string; interval: string; strategy_name: string; strategy_parameters: Record<string, number> }): Promise<PaperSimulationResponse> {
   return postJson("/paper-trading/sessions", request);
 }
