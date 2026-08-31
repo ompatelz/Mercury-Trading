@@ -102,6 +102,7 @@ export type ResearchRunResponse = {
     risk_findings?: string[];
     suggested_next_experiment?: string;
   };
+  workflow_metadata: { workflow_run_id?: string; node_durations_ms?: Record<string, number>; retrieved_memory_count?: number };
 };
 
 export type MarketDataIngestRequest = {
