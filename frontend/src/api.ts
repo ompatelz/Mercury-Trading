@@ -9,6 +9,7 @@ import type {
   ExperimentList,
   Lineage,
   PaperSessionDashboard,
+  PaperPortfolioHistoryPoint,
   ReproductionResult,
   ResearchArtifact,
   StrategyComparison,
@@ -179,6 +180,10 @@ export function getCampaign(id: string): Promise<CampaignDashboard> {
 
 export function getPaperSession(id: string): Promise<PaperSessionDashboard> {
   return getJson(`/dashboard/paper-trading/sessions/${id}`);
+}
+
+export function getPaperPerformanceHistory(id: string): Promise<PaperPortfolioHistoryPoint[]> {
+  return getJson(`/paper-trading/sessions/${id}/performance-history`);
 }
 
 export function getWorkflowEvals(): Promise<WorkflowEvalDashboard> {

@@ -1,0 +1,6 @@
+.paperTimeline { display:grid; gap:8px; margin-top:12px; padding:11px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); }
+.paperTimeline__heading { display:flex; justify-content:space-between; gap:8px; }
+.paperTimeline__heading span,.paperTimeline__summary small { color:var(--subtle); font:500 9px "DM Mono", monospace; letter-spacing:.08em; }
+.paperTimeline__heading strong { color:var(--accent); font:700 9px "DM Mono", monospace; }
+.paperTimeline svg { display:block; width:100%; height:auto; }.paperTimeline__axis { stroke:var(--line); stroke-width:1; }.paperTimeline__line { fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.paperTimeline__summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }.paperTimeline__summary span { display:grid; gap:3px; padding:7px; border-radius:7px; background:var(--surface); }.paperTimeline__summary strong { color:var(--text); font-size:.68rem; }.paperTimeline > p { margin:0; color:var(--muted); font-size:.65rem; line-height:1.45; }

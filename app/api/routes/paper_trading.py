@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.paper_trading.events import EventType
 from app.paper_trading.repository import PaperTradingRepository
 from app.paper_trading.schemas import (
     PaperFillResponse,
     PaperOrderResponse,
+    PaperPortfolioHistoryPointResponse,
     PaperTradingSessionCreateRequest,
     PaperTradingSessionResponse,
 )
@@ -92,3 +94,23 @@ def get_paper_portfolio(
     if paper_session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session not found")
     return paper_session.final_portfolio
+
+
+@router.get(
+    "/sessions/{session_id}/performance-history",
+    response_model=list[PaperPortfolioHistoryPointResponse],
+)
+def get_paper_performance_history(
+    session_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[PaperPortfolioHistoryPointResponse]:
+    repository = PaperTradingRepository(session)
+    if repository.get_session(session_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session not found")
+    return [
+        PaperPortfolioHistoryPointResponse(
+            sequence=event.sequence, timestamp=event.timestamp, **event.payload
+        )
+        for event in repository.list_events(session_id)
+        if event.event_type == EventType.PORTFOLIO.value and event.timestamp is not None
+    ]
