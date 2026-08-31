@@ -186,7 +186,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start a new research conversation" }));
 
-    expect(screen.getByText("New conversation")).toBeInTheDocument();
+    expect(screen.getByText("New conversation", { selector: "span" })).toBeInTheDocument();
     expect(screen.queryByText("A trend hypothesis")).not.toBeInTheDocument();
     expect(screen.getByLabelText("What do you want to test?")).toHaveValue("Test whether a simple moving-average trend strategy has a repeatable, risk-aware result.");
   });

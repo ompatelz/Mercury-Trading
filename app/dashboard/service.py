@@ -410,24 +410,33 @@ class DashboardService:
         )
 
     def _paper_session_analytics(self, session_id: UUID) -> PaperTradingAnalyticsResponse:
-        order_count = self.session.scalar(
-            select(func.count())
-            .select_from(PaperOrderRecord)
-            .where(PaperOrderRecord.session_id == session_id)
-        ) or 0
-        rejected_order_count = self.session.scalar(
-            select(func.count())
-            .select_from(PaperOrderRecord)
-            .where(
-                PaperOrderRecord.session_id == session_id,
-                PaperOrderRecord.status == "REJECTED",
+        order_count = (
+            self.session.scalar(
+                select(func.count())
+                .select_from(PaperOrderRecord)
+                .where(PaperOrderRecord.session_id == session_id)
             )
-        ) or 0
-        filled_order_count = self.session.scalar(
-            select(func.count(func.distinct(PaperFillRecord.order_id))).where(
-                PaperFillRecord.session_id == session_id
+            or 0
+        )
+        rejected_order_count = (
+            self.session.scalar(
+                select(func.count())
+                .select_from(PaperOrderRecord)
+                .where(
+                    PaperOrderRecord.session_id == session_id,
+                    PaperOrderRecord.status == "REJECTED",
+                )
             )
-        ) or 0
+            or 0
+        )
+        filled_order_count = (
+            self.session.scalar(
+                select(func.count(func.distinct(PaperFillRecord.order_id))).where(
+                    PaperFillRecord.session_id == session_id
+                )
+            )
+            or 0
+        )
         fill_count, total_notional, total_fees, total_slippage_cost = self.session.execute(
             select(
                 func.count(PaperFillRecord.id),
