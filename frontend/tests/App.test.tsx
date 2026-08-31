@@ -117,6 +117,7 @@ describe("App", () => {
         if (url.includes("/market-data/ingest")) return ok({ symbol: "MSFT", interval: "1d", rows_fetched: 252, rows_inserted: 252 });
         if (url.includes("/research/experiments") && init?.method === "POST") return ok({ id: "research-1", objective: "Test trend behavior", symbol: "MSFT", start_date: "2024-01-01", end_date: "2024-02-01", interval: "1d", status: "completed", backtest_experiment_id: "exp-2", hypothesis: { hypothesis: "A trend hypothesis" }, strategy: { strategy: "moving_average_crossover", parameters: { fast_window: 2, slow_window: 3 } }, metrics: { sharpe_ratio: 1.2 }, evaluation: { risk_findings: ["Review drawdown"] }, critique: { suggested_next_experiment: "Test more symbols." }, report: { conclusion: "Initial result only.", measured_facts: ["Sharpe ratio = 1.2"], risk_findings: ["Single symbol"] }, workflow_metadata: { workflow_run_id: "trace-1", node_durations_ms: { hypothesis: 12 }, retrieved_memory_count: 0 } });
         if (url.includes("/research/experiments")) return ok([]);
+        if (url.includes("/paper-trading/sessions")) return ok([]);
         if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
         if (url.endsWith("/decisions")) return ok([decision]);
         if (url.includes("/datasets/ds-1/versions")) return ok([datasetVersion]);
