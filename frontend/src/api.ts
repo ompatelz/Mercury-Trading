@@ -105,6 +105,25 @@ export type ResearchRunResponse = {
   workflow_metadata: { workflow_run_id?: string; node_durations_ms?: Record<string, number>; retrieved_memory_count?: number };
 };
 
+export type ResearchSourceAttachmentRequest = {
+  title: string;
+  content_type: "text/plain" | "text/markdown" | "text/csv";
+  content: string;
+  original_filename: string;
+};
+
+export type ResearchSourceAttachmentResponse = {
+  attachment_id: string;
+  source_id: string;
+  title: string;
+  original_filename: string | null;
+  content_type: string;
+  byte_size: number;
+  sha256: string;
+  created_at: string;
+  deduplicated: boolean;
+};
+
 export type MarketDataIngestRequest = {
   symbol: string;
   start: string;
@@ -125,6 +144,10 @@ export function ingestMarketData(request: MarketDataIngestRequest): Promise<Mark
 
 export function runResearchExperiment(request: ResearchRunRequest): Promise<ResearchRunResponse> {
   return postJson("/research/experiments", request);
+}
+
+export function attachResearchSource(experimentId: string, request: ResearchSourceAttachmentRequest): Promise<ResearchSourceAttachmentResponse> {
+  return postJson(`/research/experiments/${experimentId}/sources`, request);
 }
 
 export function listResearchExperiments(): Promise<ResearchRunResponse[]> {

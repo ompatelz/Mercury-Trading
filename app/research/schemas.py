@@ -1,8 +1,41 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class ResearchSourceCreateRequest(BaseModel):
+    """Text-only evidence attached after an experiment; never a strategy/backtest input."""
+
+    title: str = Field(min_length=1, max_length=256)
+    content_type: Literal["text/plain", "text/markdown", "text/csv"]
+    content: str = Field(min_length=1, max_length=131_072)
+    original_filename: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_safe_filename(self) -> "ResearchSourceCreateRequest":
+        if any(ord(character) < 32 for character in self.title):
+            raise ValueError("title must not contain control characters")
+        if self.original_filename is not None and (
+            "/" in self.original_filename
+            or "\\" in self.original_filename
+            or any(ord(character) < 32 for character in self.original_filename)
+        ):
+            raise ValueError("original_filename must be a plain filename")
+        return self
+
+
+class ResearchSourceResponse(BaseModel):
+    attachment_id: UUID
+    source_id: UUID
+    title: str
+    original_filename: str | None
+    content_type: Literal["text/plain", "text/markdown", "text/csv"]
+    byte_size: int
+    sha256: str
+    created_at: datetime
+    deduplicated: bool = False
 
 
 class ResearchExperimentRequest(BaseModel):
