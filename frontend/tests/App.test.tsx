@@ -151,9 +151,9 @@ describe("App", () => {
     const fetchMock = vi.mocked(fetch);
     render(<App />);
 
-    await screen.findByText("Research brief");
+    await screen.findByText("Ask Mercury");
     fireEvent.change(screen.getByLabelText("What do you want to test?"), { target: { value: "Test trend behavior with deterministic costs and a reviewable evidence trail." } });
-    fireEvent.click(screen.getByRole("button", { name: "Run research" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send to Mercury" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/market-data/ingest",
