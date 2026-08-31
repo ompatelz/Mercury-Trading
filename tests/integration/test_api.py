@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.dependencies import get_live_paper_trading_service
 from app.market_data.live import StaticLiveMarketDataProvider, live_bar_from_mapping
+from app.models.experiment import ResearchExperiment
 from app.paper_trading.live_service import LivePaperTradingService
 
 
@@ -183,7 +184,7 @@ def test_regime_and_evolution_api_flow(client: TestClient) -> None:
     assert champion_response.json()["promotion_status"] == "promote"
 
 
-def test_research_experiment_flow(client: TestClient) -> None:
+def test_research_experiment_flow(client: TestClient, db_session: Session) -> None:
     ingest_response = client.post(
         "/market-data/fetch",
         json={"symbol": "MSFT", "start": "2024-01-01", "end": "2024-01-11", "interval": "1d"},
@@ -224,6 +225,70 @@ def test_research_experiment_flow(client: TestClient) -> None:
         "memory_retrieved",
         "lesson_created",
     }
+
+    source_request = {
+        "title": "Research notes",
+        "content_type": "text/markdown",
+        "content": "# Notes\nThis is evidence only, not a trading input.",
+        "original_filename": "notes.md",
+    }
+    attach_response = client.post(
+        f"/research/experiments/{payload['id']}/sources", json=source_request
+    )
+    assert attach_response.status_code == 201
+    attachment = attach_response.json()
+    assert attachment["deduplicated"] is False
+    assert attachment["sha256"]
+    assert "content" not in attachment
+
+    list_sources_response = client.get(f"/research/experiments/{payload['id']}/sources")
+    assert list_sources_response.status_code == 200
+    assert list_sources_response.json() == [{**attachment, "deduplicated": False}]
+    source_trace_response = client.get(f"/research/experiments/{payload['id']}/trace")
+    source_events = [
+        event
+        for event in source_trace_response.json()
+        if event["event_type"] == "research_source_attached"
+    ]
+    assert source_events[0]["event_payload"]["sha256"] == attachment["sha256"]
+    assert source_events[0]["event_payload"]["execution_input"] is False
+    assert "content" not in source_events[0]["event_payload"]
+
+    duplicate_attachment_response = client.post(
+        f"/research/experiments/{payload['id']}/sources", json=source_request
+    )
+    assert duplicate_attachment_response.status_code == 422
+
+    second_experiment = ResearchExperiment(
+        objective="Persisted experiment used solely to verify source deduplication",
+        symbol="MSFT",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 1, 11),
+        interval="1d",
+        execution_engine="python",
+        status="completed",
+        hypothesis={},
+        strategy={},
+        metrics={},
+        evaluation={},
+        critique={},
+        report={},
+        model_metadata={},
+        workflow_metadata={},
+    )
+    db_session.add(second_experiment)
+    db_session.commit()
+    deduplicated_response = client.post(
+        f"/research/experiments/{second_experiment.id}/sources", json=source_request
+    )
+    assert deduplicated_response.status_code == 201
+    assert deduplicated_response.json()["deduplicated"] is True
+
+    unsafe_filename_response = client.post(
+        f"/research/experiments/{payload['id']}/sources",
+        json={**source_request, "content": "new evidence", "original_filename": "../notes.md"},
+    )
+    assert unsafe_filename_response.status_code == 422
 
 
 def test_research_agent_eval_and_version_api(client: TestClient) -> None:

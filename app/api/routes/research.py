@@ -11,11 +11,28 @@ from app.models.experiment import ResearchExperiment
 from app.research.schemas import (
     ResearchExperimentRequest,
     ResearchExperimentResponse,
+    ResearchSourceCreateRequest,
+    ResearchSourceResponse,
     ResearchTraceEventResponse,
 )
 from app.research.service import ResearchExperimentService
+from app.research_sources.service import AttachedResearchSource, ResearchSourceService
 
 router = APIRouter(prefix="/research", tags=["research"])
+
+
+def source_response(item: AttachedResearchSource) -> ResearchSourceResponse:
+    return ResearchSourceResponse(
+        attachment_id=item.attachment.id,
+        source_id=item.source.id,
+        title=item.attachment.title,
+        original_filename=item.attachment.original_filename,
+        content_type=item.source.content_type,
+        byte_size=item.source.byte_size,
+        sha256=item.source.sha256,
+        created_at=item.attachment.created_at,
+        deduplicated=item.deduplicated,
+    )
 
 
 @router.post(
@@ -49,6 +66,39 @@ def list_research_experiments(
         select(ResearchExperiment).order_by(ResearchExperiment.created_at.desc()).limit(limit)
     )
     return [ResearchExperimentResponse.model_validate(experiment) for experiment in experiments]
+
+
+@router.post(
+    "/experiments/{experiment_id}/sources",
+    response_model=ResearchSourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def attach_research_source(
+    experiment_id: UUID,
+    request: ResearchSourceCreateRequest,
+    session: Annotated[Session, Depends(get_session)],
+) -> ResearchSourceResponse:
+    try:
+        item = ResearchSourceService(session).attach(experiment_id, request)
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return source_response(item)
+
+
+@router.get("/experiments/{experiment_id}/sources", response_model=list[ResearchSourceResponse])
+def list_research_sources(
+    experiment_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> list[ResearchSourceResponse]:
+    try:
+        items = ResearchSourceService(session).list_for_experiment(experiment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [source_response(item) for item in items]
 
 
 @router.get("/experiments/{experiment_id}", response_model=ResearchExperimentResponse)

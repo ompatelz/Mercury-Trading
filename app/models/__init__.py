@@ -39,6 +39,7 @@ from app.models.paper_trading import (
 from app.models.production_simulation import ProductionSimulation
 from app.models.regime import MarketRegimeLabel
 from app.models.research_artifact import ResearchArtifact
+from app.models.research_source import ResearchSource, ResearchSourceAttachment
 from app.models.strategy_dsl import StrategyRecord
 from app.models.strategy_health import (
     ResearchSchedule,
@@ -83,6 +84,8 @@ __all__ = [
     "PortfolioEvaluation",
     "ResearchCampaign",
     "ResearchArtifact",
+    "ResearchSource",
+    "ResearchSourceAttachment",
     "ResearchExperiment",
     "ResearchMemoryLesson",
     "ResearchTraceEvent",
