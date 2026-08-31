@@ -96,6 +96,12 @@ export type ResearchRunResponse = {
   metrics: Record<string, unknown>;
   evaluation: { interpretation?: string; risk_findings?: string[] };
   critique: { suggested_next_experiment?: string };
+  report: {
+    conclusion?: string;
+    measured_facts?: string[];
+    risk_findings?: string[];
+    suggested_next_experiment?: string;
+  };
 };
 
 export type MarketDataIngestRequest = {
