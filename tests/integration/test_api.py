@@ -345,6 +345,10 @@ def test_paper_trading_api_replays_market_data_to_portfolio(client: TestClient) 
     assert paper_session["execution_mode"] == "PAPER"
     assert paper_session["metrics"]["market_events"] == 11
 
+    sessions_response = client.get("/paper-trading/sessions?limit=4")
+    assert sessions_response.status_code == 200
+    assert sessions_response.json()[0]["id"] == paper_session["id"]
+
     orders_response = client.get(f"/paper-trading/sessions/{paper_session['id']}/orders")
     assert orders_response.status_code == 200
     assert all(

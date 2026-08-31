@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -35,6 +35,17 @@ def create_paper_trading_session(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     return PaperTradingSessionResponse.model_validate(paper_session)
+
+
+@router.get("/sessions", response_model=list[PaperTradingSessionResponse])
+def list_paper_trading_sessions(
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=25)] = 8,
+) -> list[PaperTradingSessionResponse]:
+    return [
+        PaperTradingSessionResponse.model_validate(item)
+        for item in PaperTradingRepository(session).list_sessions(limit=limit)
+    ]
 
 
 @router.get("/sessions/{session_id}", response_model=PaperTradingSessionResponse)
