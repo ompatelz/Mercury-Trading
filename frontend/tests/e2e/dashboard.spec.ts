@@ -111,6 +111,8 @@ test("shows the dark guided workspace and lets a user select a real experiment",
   await expect(page.getByText("Turn an idea into")).toBeVisible();
   await expect(page.getByText("How Mercury works")).toBeVisible();
   await expect(page.getByText("Learn through examples")).toBeVisible();
-  await expect(page.getByText("Moving Average Crossover")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "MSFT Moving Average Crossover" })
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Reproduce this run" })).toBeVisible();
 });

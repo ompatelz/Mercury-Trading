@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 
@@ -114,6 +114,8 @@ describe("App", () => {
       "fetch",
       vi.fn((url: string) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
+        if (url.includes("/market-data/ingest")) return ok({ symbol: "MSFT", interval: "1d", rows_fetched: 252, rows_inserted: 252 });
+        if (url.includes("/research/experiments")) return ok({ id: "research-1", status: "completed", backtest_experiment_id: "exp-2", hypothesis: { hypothesis: "A trend hypothesis" }, strategy: { strategy: "moving_average_crossover", parameters: {} }, metrics: { sharpe_ratio: 1.2 }, evaluation: { risk_findings: ["Review drawdown"] }, critique: { suggested_next_experiment: "Test more symbols." } });
         if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
         if (url.endsWith("/decisions")) return ok([decision]);
         if (url.includes("/datasets/ds-1/versions")) return ok([datasetVersion]);
@@ -129,6 +131,7 @@ describe("App", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -142,6 +145,28 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("MSFT_1d")).toBeInTheDocument());
     expect(await screen.findByText("Workflow Rejection")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reproduce this run" })).toBeInTheDocument();
+  });
+
+  it("ingests price data before running the editable research brief", async () => {
+    const fetchMock = vi.mocked(fetch);
+    render(<App />);
+
+    await screen.findByText("Research brief");
+    fireEvent.change(screen.getByLabelText("What do you want to test?"), { target: { value: "Test trend behavior with deterministic costs and a reviewable evidence trail." } });
+    fireEvent.click(screen.getByRole("button", { name: "Run research" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/market-data/ingest",
+      expect.objectContaining({ method: "POST" })
+    ));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/research/experiments",
+      expect.objectContaining({ method: "POST" })
+    ));
+    const ingestCall = fetchMock.mock.calls.findIndex(([url]) => String(url).includes("/market-data/ingest"));
+    const researchCall = fetchMock.mock.calls.findIndex(([url]) => String(url).includes("/research/experiments"));
+    expect(ingestCall).toBeLessThan(researchCall);
+    await screen.findByText("A trend hypothesis");
   });
 });
 

@@ -48,3 +48,11 @@ def test_normalize_bars_rejects_null_values() -> None:
 
     with pytest.raises(MarketDataValidationError, match="null values"):
         normalize_bars(raw, symbol="MSFT", interval="1d")
+
+
+def test_normalize_bars_prefers_close_when_adjusted_close_is_also_present() -> None:
+    raw = sample_raw_bars().with_columns((pl.col("Close") + 5).alias("Adj Close"))
+
+    normalized = normalize_bars(raw, symbol="MSFT", interval="1d")
+
+    assert normalized.get_column("close").to_list() == raw.get_column("Close").to_list()

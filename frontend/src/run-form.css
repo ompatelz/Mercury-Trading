@@ -1,6 +1,9 @@
 .runForm { display: grid; gap: 7px; margin-top: 18px; }
 .runForm label { color: var(--subtle); font: 500 9px "DM Mono", monospace; letter-spacing: .08em; }
 .runForm > div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.runForm input { min-width: 0; border: 1px solid var(--line); border-radius: 9px; padding: 0 11px; color: var(--text); background: var(--surface-2); font: 700 .8rem "DM Mono", monospace; }
+.runForm input,.runForm textarea { min-width: 0; border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; color: var(--text); background: var(--surface-2); font: 700 .8rem "DM Mono", monospace; }
+.runForm textarea { min-height: 82px; resize: vertical; font: 500 .74rem/1.55 Manrope, sans-serif; }
+.runForm input:focus,.runForm textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
 .runForm .button { min-height: 39px; }
+.researchResult { margin-top: 12px; }.researchResult .result { margin-top: 0; }.researchResultGrid { display: grid; gap: 10px; margin-top: 10px; }.researchResultGrid > div { display: grid; gap: 4px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); }.researchResultGrid span { color: var(--subtle); font: 500 9px "DM Mono", monospace; letter-spacing: .08em; }.researchResultGrid strong { color: var(--text); font-size: .78rem; }.researchResultGrid small,.researchResultGrid p,.nextExperiment { margin: 0; color: var(--muted); font-size: .7rem; line-height: 1.55; }.nextExperiment { margin-top: 10px; padding: 0 2px; }.nextExperiment strong { color: var(--accent); }
 @media (max-width: 560px) { .runForm > div { grid-template-columns: 1fr; } }
