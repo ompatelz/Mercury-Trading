@@ -18,13 +18,20 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { getOverview, ingestMarketData, listDatasetCatalog, listDecisions, listExperiments, reproduceExperiment, runResearchExperiment } from "./api";
-import type { ResearchRunResponse } from "./api";
+import { getOverview, ingestMarketData, listDatasetCatalog, listDecisions, listExperiments, listResearchExperiments, reproduceExperiment, runResearchExperiment, startPaperSimulation } from "./api";
+import type { PaperSimulationResponse, ResearchRunResponse } from "./api";
 import CountUp from "./components/CountUp";
 import { SkiperThemeToggle } from "./components/SkiperThemeToggle";
 import type { DashboardOverview, DatasetCatalogItem, Decision, ExperimentListItem, ReproductionResult } from "./types";
 
 type Status<T> = { data?: T; error?: string; loading: boolean };
+type ResearchMessage = { role: "user" | "assistant"; content: string };
+
+const starterPrompts = [
+  { label: "Trend follow", prompt: "Test whether a simple moving-average trend strategy has a repeatable, risk-aware result.", symbol: "MSFT" },
+  { label: "Test a stock", prompt: "Explore whether trend persistence is worth testing with documented costs and a reviewable evidence trail.", symbol: "AAPL" },
+  { label: "Challenge an idea", prompt: "Stress-test a simple trend hypothesis and clearly identify the conditions under which it could fail.", symbol: "SPY" }
+];
 
 const demoFlows = [
   { title: "Trend validation", tag: "Example 01", summary: "Compare a moving-average idea across market regimes before it can enter PAPER mode.", steps: ["Choose a liquid symbol", "Run the reproducible experiment", "Inspect rules and drawdown"] },
@@ -47,6 +54,9 @@ export function App() {
   const [researchObjective, setResearchObjective] = useState(
     "Test whether a simple moving-average trend strategy has a repeatable, risk-aware result."
   );
+  const [researchMessages, setResearchMessages] = useState<ResearchMessage[]>([]);
+  const [researchHistory, setResearchHistory] = useState<Status<ResearchRunResponse[]>>({ loading: true });
+  const [paperSimulation, setPaperSimulation] = useState<Status<PaperSimulationResponse>>({ loading: false });
   const [refreshing, setRefreshing] = useState(false);
 
   const activeExperiment = useMemo(
@@ -62,11 +72,12 @@ export function App() {
     setExperiments((current) => ({ ...current, loading: true, error: undefined }));
     setDatasets((current) => ({ ...current, loading: true, error: undefined }));
     setDecisions((current) => ({ ...current, loading: true, error: undefined }));
-    const results = await Promise.allSettled([getOverview(), listExperiments(new URLSearchParams({ limit: "8" })), listDatasetCatalog(), listDecisions()]);
+    const results = await Promise.allSettled([getOverview(), listExperiments(new URLSearchParams({ limit: "8" })), listDatasetCatalog(), listDecisions(), listResearchExperiments()]);
     settle(results[0], setOverview);
     settle(results[1], setExperiments, (value) => value.items);
     settle(results[2], setDatasets);
     settle(results[3], setDecisions);
+    settle(results[4], setResearchHistory);
     setRefreshing(false);
   }
 
@@ -81,12 +92,14 @@ export function App() {
     event.preventDefault();
     setResearchRun({ loading: true });
     const symbol = runSymbol.trim().toUpperCase();
+    const objective = researchObjective.trim();
+    setResearchMessages((messages) => [...messages, { role: "user", content: objective }]);
     try {
       setResearchRunStep("ingesting");
       await ingestMarketData({ symbol, start: "2023-01-01", end: "2024-01-01", interval: "1d" });
       setResearchRunStep("running");
       const result = await runResearchExperiment({
-        objective: researchObjective.trim(),
+        objective,
         symbol,
         start_date: "2023-01-01",
         end_date: "2024-01-01",
@@ -97,9 +110,17 @@ export function App() {
         execution_engine: "python"
       });
       setResearchRun({ loading: false, data: result });
+      setResearchMessages((messages) => [...messages, { role: "assistant", content: researchSummary(result) }]);
       await refreshWorkspace();
     } catch (error) { setResearchRun({ loading: false, error: message(error) }); }
     finally { setResearchRunStep("idle"); }
+  }
+
+  async function startPaperRun(run: ResearchRunResponse) {
+    if (!run.strategy.strategy || !run.strategy.parameters) return;
+    setPaperSimulation({ loading: true });
+    try { setPaperSimulation({ loading: false, data: await startPaperSimulation({ symbol: run.symbol, start: run.start_date, end: run.end_date, interval: run.interval, strategy_name: run.strategy.strategy, strategy_parameters: run.strategy.parameters as Record<string, number> }) }); }
+    catch (error) { setPaperSimulation({ loading: false, error: message(error) }); }
   }
 
   return (
@@ -134,7 +155,7 @@ export function App() {
 
       <section className="section workspace" id="workspace"><div className="sectionHeading sectionHeading--row"><div><span className="kicker">YOUR WORKSPACE</span><h2>Use the real research tools</h2><p>Live records appear here when your local database has them.</p></div><span className="paperBadge">PAPER-ONLY</span></div><div className="workspaceGrid">
         <article className="workCard workCard--wide"><div className="workCardHeader"><div><span className="workIcon"><Beaker size={18} /></span><h3>Experiments</h3></div><span>{experiments.data?.length ?? 0} available</span></div>{experiments.loading ? <Loading label="Loading experiments" /> : experiments.error ? <ErrorState error={experiments.error} /> : experiments.data?.length ? <div className="experimentList">{experiments.data.map((experiment) => <button key={experiment.id} className={activeExperiment?.id === experiment.id ? "experiment experiment--active" : "experiment"} onClick={() => { setSelectedExperiment(experiment.id); setReproduction({ loading: false }); }}><span className="experimentSymbol">{experiment.symbol}</span><span><strong>{humanize(experiment.strategy_name)}</strong><small>{experiment.status} · {experiment.start_date} → {experiment.end_date}</small></span><span className="experimentMetric">{metric(experiment.metrics.sharpe_ratio)}<small>Sharpe</small></span></button>)}</div> : <EmptyState icon={<Beaker size={20} />} title="No experiments yet" text="Create or ingest research through the API, then return here to review it." action="Open API docs" />}</article>
-        <article className="workCard researchBrief"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Research brief</h3></div><span>Guided · local</span></div><p className="cardCopy">Describe the question you want tested. Mercury uses only registered deterministic strategies, ingests the required data, and records the full evidence trail—never a live order.</p><form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="research-objective">What do you want to test?</label><textarea id="research-objective" value={researchObjective} onChange={(event) => setResearchObjective(event.target.value)} minLength={10} maxLength={1000} required /><label htmlFor="run-symbol">Market symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRunStep === "ingesting" ? "Preparing data…" : researchRunStep === "running" ? "Testing brief…" : "Run research"}</button></div></form>{researchRun.data && <ResearchResult run={researchRun.data} />}{researchRun.error && <ErrorState title="Research run couldn't start" error={researchRun.error} />}</article>
+        <article className="workCard researchBrief"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Ask Mercury</h3></div><span>Research desk · PAPER</span></div><p className="cardCopy">Describe the question in plain language. Mercury turns it into a registered deterministic test, records the evidence, and never creates a live order.</p><div className="starterPrompts" aria-label="Research starters">{starterPrompts.map((starter) => <button key={starter.label} type="button" onClick={() => { setResearchObjective(starter.prompt); setRunSymbol(starter.symbol); }}>{starter.label}</button>)}</div>{researchMessages.length > 0 && <div className="researchMessages" aria-live="polite">{researchMessages.map((message, index) => <div key={`${message.role}-${index}`} className={`researchMessage researchMessage--${message.role}`}><span>{message.role === "user" ? "YOU" : "MERCURY"}</span><p>{message.content}</p></div>)}</div>}<form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="research-objective">What do you want to test?</label><textarea id="research-objective" value={researchObjective} onChange={(event) => setResearchObjective(event.target.value)} minLength={10} maxLength={1000} required /><label htmlFor="run-symbol">Market symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRunStep === "ingesting" ? "Preparing data…" : researchRunStep === "running" ? "Testing brief…" : "Send to Mercury"}</button></div></form>{researchRun.data && <ResearchResult run={researchRun.data} onPaperRun={() => void startPaperRun(researchRun.data!)} paperSimulation={paperSimulation} />}{researchRun.error && <ErrorState title="Research run couldn't start" error={researchRun.error} />}{researchHistory.data?.length ? <div className="researchHistory"><span>RECENT RESEARCH</span>{researchHistory.data.slice(0, 3).map((run) => <button key={run.id} type="button" onClick={() => { setResearchObjective(run.objective); setRunSymbol(run.symbol); setResearchRun({ loading: false, data: run }); setPaperSimulation({ loading: false }); }}><strong>{run.symbol} · {run.strategy.strategy ? humanize(run.strategy.strategy) : "Research run"}</strong><small>{run.objective}</small></button>)}</div> : null}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><RotateCcw size={18} /></span><h3>Verify a run</h3></div></div><p className="cardCopy">Re-run the selected experiment and compare its recorded fingerprints and metrics.</p>{activeExperiment ? <><div className="selectedRun"><span>{activeExperiment.symbol}</span><strong>{humanize(activeExperiment.strategy_name)}</strong><small>{activeExperiment.id}</small></div><button className="button button--primary button--full" onClick={() => void runReproduction()} disabled={reproduction.loading}><RotateCcw size={16} /> {reproduction.loading ? "Verifying run…" : "Reproduce this run"}</button></> : <button className="button button--muted button--full" disabled><RotateCcw size={16} /> Select an experiment first</button>}{reproduction.data && <div className={reproduction.data.match ? "result result--good" : "result result--warn"}><strong>{reproduction.data.match ? "Match verified" : "Review differences"}</strong><span>{reproduction.data.blocking_differences.length ? reproduction.data.blocking_differences.join(", ") : "Recorded metrics and fingerprints agree."}</span></div>}{reproduction.error && <ErrorState error={reproduction.error} />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Database size={18} /></span><h3>Research data</h3></div><span>{datasets.data?.length ?? 0} catalogs</span></div>{datasets.loading ? <Loading label="Loading datasets" /> : datasets.error ? <ErrorState error={datasets.error} /> : datasets.data?.length ? <ul className="compactList">{datasets.data.slice(0, 4).map((dataset) => <li key={dataset.id}><span><strong>{dataset.name}</strong><small>{dataset.versions.length} immutable version{dataset.versions.length === 1 ? "" : "s"}</small></span><GitBranch size={16} /></li>)}</ul> : <EmptyState icon={<Database size={20} />} title="No datasets yet" text="Immutable data snapshots will show up here." />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><TerminalSquare size={18} /></span><h3>Decision trail</h3></div><span>{decisions.data?.length ?? 0} records</span></div>{decisions.loading ? <Loading label="Loading decisions" /> : decisions.error ? <ErrorState error={decisions.error} /> : decisions.data?.length ? <ul className="compactList">{decisions.data.slice(0, 4).map((decision) => <li key={decision.id}><span><strong>{humanize(decision.decision_type)}</strong><small>{decision.outcome} · hash {decision.content_hash.slice(0, 8)}</small></span><span className={decision.integrity.verified === false ? "integrity integrity--bad" : "integrity"}>{decision.integrity.verified === false ? "Check" : "Verified"}</span></li>)}</ul> : <EmptyState icon={<TerminalSquare size={20} />} title="No decisions yet" text="When a workflow accepts or rejects a candidate, its evidence appears here." />}</article>
@@ -154,4 +175,5 @@ function FlowStep({ icon, number, title, text }: { icon: React.ReactNode; number
 function Loading({ label }: { label: string }) { return <div className="placeholder"><span className="loader" />{label}</div>; }
 function ErrorState({ error, title = "Couldn’t load this resource." }: { error: string; title?: string }) { return <div className="errorState"><strong>{title}</strong><span>{error}</span></div>; }
 function EmptyState({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: string }) { return <div className="emptyState"><span>{icon}</span><strong>{title}</strong><p>{text}</p>{action && <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">{action} <ArrowRight size={14} /></a>}</div>; }
-function ResearchResult({ run }: { run: ResearchRunResponse }) { const strategy = run.strategy.strategy ? humanize(run.strategy.strategy) : "Registered strategy"; const sharpe = metric(run.metrics.sharpe_ratio); return <section className="researchResult" aria-live="polite"><div className="result result--good"><strong>Research run complete</strong><span>Recorded as {run.id.slice(0, 8)} · {run.status}</span></div><div className="researchResultGrid"><div><span>TESTED</span><strong>{strategy}</strong><small>Sharpe {sharpe} · backtest {run.backtest_experiment_id?.slice(0, 8) ?? "recorded"}</small></div><div><span>HYPOTHESIS</span><p>{run.hypothesis.hypothesis ?? "The registered strategy was tested against the requested data."}</p></div><div><span>RISK CHECK</span><p>{run.evaluation.risk_findings?.[0] ?? run.evaluation.interpretation ?? "Review the stored evidence before any PAPER simulation."}</p></div></div>{run.critique.suggested_next_experiment && <p className="nextExperiment"><strong>Next experiment:</strong> {run.critique.suggested_next_experiment}</p>}</section>; }
+function ResearchResult({ run, onPaperRun, paperSimulation }: { run: ResearchRunResponse; onPaperRun: () => void; paperSimulation: Status<PaperSimulationResponse> }) { const strategy = run.strategy.strategy ? humanize(run.strategy.strategy) : "Registered strategy"; const sharpe = metric(run.metrics.sharpe_ratio); return <section className="researchResult" aria-live="polite"><div className="result result--good"><strong>Research run complete</strong><span>Recorded as {run.id.slice(0, 8)} · {run.status}</span></div><div className="researchResultGrid"><div><span>TESTED</span><strong>{strategy}</strong><small>Sharpe {sharpe} · backtest {run.backtest_experiment_id?.slice(0, 8) ?? "recorded"}</small></div><div><span>HYPOTHESIS</span><p>{run.hypothesis.hypothesis ?? "The registered strategy was tested against the requested data."}</p></div><div><span>RISK CHECK</span><p>{run.evaluation.risk_findings?.[0] ?? run.evaluation.interpretation ?? "Review the stored evidence before any PAPER simulation."}</p></div></div><button className="button button--secondary button--full" onClick={onPaperRun} disabled={paperSimulation.loading || !run.strategy.strategy}><ShieldCheck size={16} /> {paperSimulation.loading ? "Starting PAPER replay…" : "Run this in PAPER"}</button>{paperSimulation.data && <div className="result result--good"><strong>PAPER replay complete</strong><span>{paperSimulation.data.execution_mode} · ending equity {metric(paperSimulation.data.metrics.ending_equity)}</span></div>}{paperSimulation.error && <ErrorState title="PAPER replay couldn't start" error={paperSimulation.error} />}{run.critique.suggested_next_experiment && <p className="nextExperiment"><strong>Next experiment:</strong> {run.critique.suggested_next_experiment}</p>}</section>; }
+function researchSummary(run: ResearchRunResponse) { const strategy = run.strategy.strategy ? humanize(run.strategy.strategy) : "the registered strategy"; const risk = run.evaluation.risk_findings?.[0] ?? "Review the evidence before a PAPER simulation."; return `I tested ${strategy}. Sharpe: ${metric(run.metrics.sharpe_ratio)}. ${risk}`; }
