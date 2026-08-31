@@ -145,3 +145,14 @@ class PaperFillResponse(BaseModel):
     timestamp: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PaperPortfolioHistoryPointResponse(BaseModel):
+    sequence: int
+    timestamp: datetime
+    cash: float
+    equity: float
+    realized_pnl: float
+    unrealized_pnl: float
+    exposure: float
+    transaction_costs: float

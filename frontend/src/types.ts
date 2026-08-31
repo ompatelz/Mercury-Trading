@@ -206,6 +206,10 @@ export type PaperExecutionAnalytics = {
   total_slippage_cost: number;
 };
 
+export type PaperPortfolioHistoryPoint = {
+  sequence: number; timestamp: string; cash: number; equity: number; realized_pnl: number; unrealized_pnl: number; exposure: number; transaction_costs: number;
+};
+
 export type WorkflowEvalDashboard = {
   experiments: Array<{
     id: string;
