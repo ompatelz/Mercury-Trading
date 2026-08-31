@@ -131,6 +131,12 @@ def test_dashboard_lineage_comparison_and_paper_monitoring(client: TestClient) -
     monitor = monitor_response.json()
     assert monitor["execution_mode"] == "PAPER"
     assert monitor["equity"] == paper_session["metrics"]["ending_equity"]
+    assert monitor["analytics"]["order_count"] >= monitor["analytics"]["filled_order_count"]
+    assert monitor["analytics"]["fill_count"] == paper_session["metrics"]["fills"]
+    assert 0 <= monitor["analytics"]["fill_rate"] <= 1
+    assert monitor["analytics"]["total_notional"] >= 0
+    assert monitor["analytics"]["total_fees"] >= 0
+    assert monitor["analytics"]["total_slippage_cost"] >= 0
     assert {item["component"] for item in monitor["system_health"]} >= {
         "Paper Broker",
         "Strategy Runner",

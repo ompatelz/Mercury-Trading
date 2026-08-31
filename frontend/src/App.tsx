@@ -21,11 +21,14 @@ import type { FormEvent } from "react";
 import { getOverview, getPaperSession, ingestMarketData, listDatasetCatalog, listDecisions, listExperiments, listPaperSessions, listResearchExperiments, reproduceExperiment, runResearchExperiment, startPaperSimulation } from "./api";
 import type { PaperSessionSummary, PaperSimulationResponse, ResearchRunResponse } from "./api";
 import CountUp from "./components/CountUp";
+import { ResearchSessionToolbar } from "./components/ResearchSessionToolbar";
+import type { ResearchMessage } from "./components/ResearchSessionToolbar";
 import { SkiperThemeToggle } from "./components/SkiperThemeToggle";
 import type { DashboardOverview, DatasetCatalogItem, Decision, ExperimentListItem, PaperSessionDashboard, ReproductionResult } from "./types";
 
 type Status<T> = { data?: T; error?: string; loading: boolean };
-type ResearchMessage = { role: "user" | "assistant"; content: string };
+const defaultResearchObjective = "Test whether a simple moving-average trend strategy has a repeatable, risk-aware result.";
+const researchSessionStorageKey = "mercury.research-conversation.v1";
 
 const starterPrompts = [
   { label: "Trend follow", prompt: "Test whether a simple moving-average trend strategy has a repeatable, risk-aware result.", symbol: "MSFT" },
@@ -40,6 +43,7 @@ const demoFlows = [
 ];
 
 export function App() {
+  const savedResearchSession = loadResearchSession();
   const [isDark, setIsDark] = useState(true);
   const [overview, setOverview] = useState<Status<DashboardOverview>>({ loading: true });
   const [experiments, setExperiments] = useState<Status<ExperimentListItem[]>>({ loading: true });
@@ -50,11 +54,9 @@ export function App() {
   const [reproduction, setReproduction] = useState<Status<ReproductionResult>>({ loading: false });
   const [researchRun, setResearchRun] = useState<Status<ResearchRunResponse>>({ loading: false });
   const [researchRunStep, setResearchRunStep] = useState<"idle" | "ingesting" | "running">("idle");
-  const [runSymbol, setRunSymbol] = useState("MSFT");
-  const [researchObjective, setResearchObjective] = useState(
-    "Test whether a simple moving-average trend strategy has a repeatable, risk-aware result."
-  );
-  const [researchMessages, setResearchMessages] = useState<ResearchMessage[]>([]);
+  const [runSymbol, setRunSymbol] = useState(savedResearchSession.symbol);
+  const [researchObjective, setResearchObjective] = useState(savedResearchSession.objective);
+  const [researchMessages, setResearchMessages] = useState<ResearchMessage[]>(savedResearchSession.messages);
   const [researchHistory, setResearchHistory] = useState<Status<ResearchRunResponse[]>>({ loading: true });
   const [paperSimulation, setPaperSimulation] = useState<Status<PaperSimulationResponse>>({ loading: false });
   const [paperSessions, setPaperSessions] = useState<Status<PaperSessionSummary[]>>({ loading: true });
@@ -67,6 +69,7 @@ export function App() {
   );
 
   useEffect(() => { void refreshWorkspace(); }, []);
+  useEffect(() => { window.localStorage.setItem(researchSessionStorageKey, JSON.stringify({ symbol: runSymbol, objective: researchObjective, messages: researchMessages })); }, [researchMessages, researchObjective, runSymbol]);
 
   async function refreshWorkspace() {
     setRefreshing(true);
@@ -128,6 +131,8 @@ export function App() {
 
   async function openPaperSession(sessionId: string) { setPaperDetail({ loading: true }); try { setPaperDetail({ loading: false, data: await getPaperSession(sessionId) }); } catch (error) { setPaperDetail({ loading: false, error: message(error) }); } }
 
+  function startNewResearchConversation() { window.localStorage.removeItem(researchSessionStorageKey); setResearchObjective(defaultResearchObjective); setRunSymbol("MSFT"); setResearchMessages([]); setResearchRun({ loading: false }); setPaperSimulation({ loading: false }); }
+
   return (
     <main className={isDark ? "app app--dark" : "app"}>
       <div className="ambient ambient--one" /><div className="ambient ambient--two" />
@@ -160,7 +165,7 @@ export function App() {
 
       <section className="section workspace" id="workspace"><div className="sectionHeading sectionHeading--row"><div><span className="kicker">YOUR WORKSPACE</span><h2>Use the real research tools</h2><p>Live records appear here when your local database has them.</p></div><span className="paperBadge">PAPER-ONLY</span></div><div className="workspaceGrid">
         <article className="workCard workCard--wide"><div className="workCardHeader"><div><span className="workIcon"><Beaker size={18} /></span><h3>Experiments</h3></div><span>{experiments.data?.length ?? 0} available</span></div>{experiments.loading ? <Loading label="Loading experiments" /> : experiments.error ? <ErrorState error={experiments.error} /> : experiments.data?.length ? <div className="experimentList">{experiments.data.map((experiment) => <button key={experiment.id} className={activeExperiment?.id === experiment.id ? "experiment experiment--active" : "experiment"} onClick={() => { setSelectedExperiment(experiment.id); setReproduction({ loading: false }); }}><span className="experimentSymbol">{experiment.symbol}</span><span><strong>{humanize(experiment.strategy_name)}</strong><small>{experiment.status} · {experiment.start_date} → {experiment.end_date}</small></span><span className="experimentMetric">{metric(experiment.metrics.sharpe_ratio)}<small>Sharpe</small></span></button>)}</div> : <EmptyState icon={<Beaker size={20} />} title="No experiments yet" text="Create or ingest research through the API, then return here to review it." action="Open API docs" />}</article>
-        <article className="workCard researchBrief"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Ask Mercury</h3></div><span>Research desk · PAPER</span></div><p className="cardCopy">Describe the question in plain language. Mercury turns it into a registered deterministic test, records the evidence, and never creates a live order.</p><div className="starterPrompts" aria-label="Research starters">{starterPrompts.map((starter) => <button key={starter.label} type="button" onClick={() => { setResearchObjective(starter.prompt); setRunSymbol(starter.symbol); }}>{starter.label}</button>)}</div>{researchMessages.length > 0 && <div className="researchMessages" aria-live="polite">{researchMessages.map((message, index) => <div key={`${message.role}-${index}`} className={`researchMessage researchMessage--${message.role}`}><span>{message.role === "user" ? "YOU" : "MERCURY"}</span><p>{message.content}</p></div>)}</div>}<form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="research-objective">What do you want to test?</label><textarea id="research-objective" value={researchObjective} onChange={(event) => setResearchObjective(event.target.value)} minLength={10} maxLength={1000} required /><label htmlFor="run-symbol">Market symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRunStep === "ingesting" ? "Preparing data…" : researchRunStep === "running" ? "Testing brief…" : "Send to Mercury"}</button></div></form>{researchRun.data && <ResearchResult run={researchRun.data} onPaperRun={() => void startPaperRun(researchRun.data!)} paperSimulation={paperSimulation} />}{researchRun.error && <ErrorState title="Research run couldn't start" error={researchRun.error} />}{researchHistory.data?.length ? <div className="researchHistory"><span>RECENT RESEARCH</span>{researchHistory.data.slice(0, 3).map((run) => <button key={run.id} type="button" onClick={() => { setResearchObjective(run.objective); setRunSymbol(run.symbol); setResearchRun({ loading: false, data: run }); setPaperSimulation({ loading: false }); }}><strong>{run.symbol} · {run.strategy.strategy ? humanize(run.strategy.strategy) : "Research run"}</strong><small>{run.objective}</small></button>)}</div> : null}</article>
+        <article className="workCard researchBrief"><div className="workCardHeader"><div><span className="workIcon"><Play size={18} /></span><h3>Ask Mercury</h3></div><span>Research desk · PAPER</span></div><p className="cardCopy">Describe the question in plain language. Mercury turns it into a registered deterministic test, records the evidence, and never creates a live order.</p><ResearchSessionToolbar messageCount={researchMessages.length} onNewConversation={startNewResearchConversation} /><div className="starterPrompts" aria-label="Research starters">{starterPrompts.map((starter) => <button key={starter.label} type="button" onClick={() => { setResearchObjective(starter.prompt); setRunSymbol(starter.symbol); }}>{starter.label}</button>)}</div>{researchMessages.length > 0 && <div className="researchMessages" aria-live="polite">{researchMessages.map((message, index) => <div key={`${message.role}-${index}`} className={`researchMessage researchMessage--${message.role}`}><span>{message.role === "user" ? "YOU" : "MERCURY"}</span><p>{message.content}</p></div>)}</div>}<form className="runForm" onSubmit={(event) => void startResearchRun(event)}><label htmlFor="research-objective">What do you want to test?</label><textarea id="research-objective" value={researchObjective} onChange={(event) => setResearchObjective(event.target.value)} minLength={10} maxLength={1000} required /><label htmlFor="run-symbol">Market symbol</label><div><input id="run-symbol" value={runSymbol} onChange={(event) => setRunSymbol(event.target.value)} maxLength={12} required /><button className="button button--primary" disabled={researchRun.loading}><Play size={15} /> {researchRunStep === "ingesting" ? "Preparing data…" : researchRunStep === "running" ? "Testing brief…" : "Send to Mercury"}</button></div></form>{researchRun.data && <ResearchResult run={researchRun.data} onPaperRun={() => void startPaperRun(researchRun.data!)} paperSimulation={paperSimulation} />}{researchRun.error && <ErrorState title="Research run couldn't start" error={researchRun.error} />}{researchHistory.data?.length ? <div className="researchHistory"><span>RECENT RESEARCH</span>{researchHistory.data.slice(0, 3).map((run) => <button key={run.id} type="button" onClick={() => { setResearchObjective(run.objective); setRunSymbol(run.symbol); setResearchRun({ loading: false, data: run }); setPaperSimulation({ loading: false }); }}><strong>{run.symbol} · {run.strategy.strategy ? humanize(run.strategy.strategy) : "Research run"}</strong><small>{run.objective}</small></button>)}</div> : null}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><RotateCcw size={18} /></span><h3>Verify a run</h3></div></div><p className="cardCopy">Re-run the selected experiment and compare its recorded fingerprints and metrics.</p>{activeExperiment ? <><div className="selectedRun"><span>{activeExperiment.symbol}</span><strong>{humanize(activeExperiment.strategy_name)}</strong><small>{activeExperiment.id}</small></div><button className="button button--primary button--full" onClick={() => void runReproduction()} disabled={reproduction.loading}><RotateCcw size={16} /> {reproduction.loading ? "Verifying run…" : "Reproduce this run"}</button></> : <button className="button button--muted button--full" disabled><RotateCcw size={16} /> Select an experiment first</button>}{reproduction.data && <div className={reproduction.data.match ? "result result--good" : "result result--warn"}><strong>{reproduction.data.match ? "Match verified" : "Review differences"}</strong><span>{reproduction.data.blocking_differences.length ? reproduction.data.blocking_differences.join(", ") : "Recorded metrics and fingerprints agree."}</span></div>}{reproduction.error && <ErrorState error={reproduction.error} />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Database size={18} /></span><h3>Research data</h3></div><span>{datasets.data?.length ?? 0} catalogs</span></div>{datasets.loading ? <Loading label="Loading datasets" /> : datasets.error ? <ErrorState error={datasets.error} /> : datasets.data?.length ? <ul className="compactList">{datasets.data.slice(0, 4).map((dataset) => <li key={dataset.id}><span><strong>{dataset.name}</strong><small>{dataset.versions.length} immutable version{dataset.versions.length === 1 ? "" : "s"}</small></span><GitBranch size={16} /></li>)}</ul> : <EmptyState icon={<Database size={20} />} title="No datasets yet" text="Immutable data snapshots will show up here." />}</article>
         <article className="workCard"><div className="workCardHeader"><div><span className="workIcon"><Gauge size={18} /></span><h3>PAPER sessions</h3></div><span>PAPER only</span></div>{paperSessions.loading ? <Loading label="Loading simulations" /> : paperSessions.error ? <ErrorState error={paperSessions.error} /> : paperSessions.data?.length ? <ul className="compactList">{paperSessions.data.map((session) => <li key={session.id}><button className="paperSessionButton" onClick={() => void openPaperSession(session.id)}><span><strong>{session.symbol} · {humanize(session.strategy_name)}</strong><small>{session.status} · fills {String(session.metrics.fills ?? 0)} · equity {metric(session.metrics.ending_equity)}</small></span><span className="integrity">PAPER</span></button></li>)}</ul> : <EmptyState icon={<Gauge size={20} />} title="No PAPER sessions yet" text="Run a completed research result in PAPER to create a persisted replay." />}{paperDetail.data && <div className="paperDetail"><strong>Simulation detail</strong><span>Equity {metric(paperDetail.data.equity)} · PnL {metric(paperDetail.data.pnl)} · orders {paperDetail.data.recent_orders.length} · fills {paperDetail.data.recent_fills.length}</span></div>}{paperDetail.error && <ErrorState title="Couldn’t load PAPER session" error={paperDetail.error} />}</article>
@@ -173,6 +178,19 @@ export function App() {
 
 function settle<T, U = T>(result: PromiseSettledResult<T>, set: (value: Status<U>) => void, transform?: (value: T) => U) { if (result.status === "fulfilled") set({ loading: false, data: transform ? transform(result.value) : (result.value as unknown as U) }); else set({ loading: false, error: message(result.reason) }); }
 function message(error: unknown) { return error instanceof Error ? error.message : "Could not load this live resource."; }
+function loadResearchSession(): { symbol: string; objective: string; messages: ResearchMessage[] } {
+  const fallback = { symbol: "MSFT", objective: defaultResearchObjective, messages: [] as ResearchMessage[] };
+  try {
+    const stored = window.localStorage.getItem(researchSessionStorageKey);
+    if (!stored) return fallback;
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object") return fallback;
+    const session = parsed as Partial<{ symbol: unknown; objective: unknown; messages: unknown }>;
+    if (typeof session.symbol !== "string" || typeof session.objective !== "string" || !Array.isArray(session.messages)) return fallback;
+    const messages = session.messages.filter((item): item is ResearchMessage => Boolean(item) && typeof item === "object" && ((item as ResearchMessage).role === "user" || (item as ResearchMessage).role === "assistant") && typeof (item as ResearchMessage).content === "string");
+    return { symbol: session.symbol, objective: session.objective, messages };
+  } catch { return fallback; }
+}
 function humanize(value: string) { return value.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function metric(value: unknown) { return typeof value === "number" ? value.toFixed(2) : "—"; }
 function StatusRow({ label, value, ok }: { label: string; value: string; ok: boolean }) { return <div className="statusRow"><span>{label}</span><strong className={ok ? "ok" : "pending"}>{ok && <CheckCircle2 size={14} />}{value}</strong></div>; }

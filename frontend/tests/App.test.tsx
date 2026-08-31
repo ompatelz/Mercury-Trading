@@ -110,6 +110,7 @@ const decision = {
 
 describe("App", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init?: RequestInit) => {
@@ -171,6 +172,23 @@ describe("App", () => {
     );
     expect(ingestCall).toBeLessThan(researchCall);
     await screen.findByText("A trend hypothesis");
+  });
+
+  it("keeps a local conversation draft and can start a fresh one without deleting research records", async () => {
+    render(<App />);
+
+    await screen.findByText("Ask Mercury");
+    fireEvent.change(screen.getByLabelText("What do you want to test?"), { target: { value: "Test trend behavior with deterministic costs and a reviewable evidence trail." } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Mercury" }));
+
+    expect(await screen.findByText("1 research turn")).toBeInTheDocument();
+    expect(window.localStorage.getItem("mercury.research-conversation.v1")).toContain("Test trend behavior");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start a new research conversation" }));
+
+    expect(screen.getByText("New conversation", { selector: "span" })).toBeInTheDocument();
+    expect(screen.queryByText("A trend hypothesis")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("What do you want to test?")).toHaveValue("Test whether a simple moving-average trend strategy has a repeatable, risk-aware result.");
   });
 });
 

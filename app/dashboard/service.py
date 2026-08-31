@@ -13,6 +13,7 @@ from app.dashboard.schemas import (
     ExperimentDetailResponse,
     ExperimentListItem,
     ExperimentListResponse,
+    PaperTradingAnalyticsResponse,
     PaperTradingDashboardResponse,
     RecentActivityItem,
     StrategyComparisonResponse,
@@ -373,6 +374,7 @@ class DashboardService:
                 .limit(20)
             )
         )
+        analytics = self._paper_session_analytics(session_id)
         portfolio = paper_session.final_portfolio
         equity = _maybe_float(portfolio.get("equity"))
         cash = _maybe_float(portfolio.get("cash"))
@@ -392,6 +394,7 @@ class DashboardService:
             recent_orders=[_order_payload(item) for item in orders],
             recent_fills=[_fill_payload(item) for item in fills],
             rejected_orders=[_order_payload(item) for item in orders if item.status == "REJECTED"],
+            analytics=analytics,
             system_health=[
                 ComponentHealth(
                     component="Paper Broker",
@@ -404,6 +407,53 @@ class DashboardService:
                     detail=paper_session.strategy_name,
                 ),
             ],
+        )
+
+    def _paper_session_analytics(self, session_id: UUID) -> PaperTradingAnalyticsResponse:
+        order_count = (
+            self.session.scalar(
+                select(func.count())
+                .select_from(PaperOrderRecord)
+                .where(PaperOrderRecord.session_id == session_id)
+            )
+            or 0
+        )
+        rejected_order_count = (
+            self.session.scalar(
+                select(func.count())
+                .select_from(PaperOrderRecord)
+                .where(
+                    PaperOrderRecord.session_id == session_id,
+                    PaperOrderRecord.status == "REJECTED",
+                )
+            )
+            or 0
+        )
+        filled_order_count = (
+            self.session.scalar(
+                select(func.count(func.distinct(PaperFillRecord.order_id))).where(
+                    PaperFillRecord.session_id == session_id
+                )
+            )
+            or 0
+        )
+        fill_count, total_notional, total_fees, total_slippage_cost = self.session.execute(
+            select(
+                func.count(PaperFillRecord.id),
+                func.coalesce(func.sum(PaperFillRecord.gross_notional), 0),
+                func.coalesce(func.sum(PaperFillRecord.fees), 0),
+                func.coalesce(func.sum(PaperFillRecord.slippage_cost), 0),
+            ).where(PaperFillRecord.session_id == session_id)
+        ).one()
+        return PaperTradingAnalyticsResponse(
+            order_count=int(order_count),
+            filled_order_count=int(filled_order_count),
+            rejected_order_count=int(rejected_order_count),
+            fill_count=int(fill_count),
+            fill_rate=filled_order_count / order_count if order_count else None,
+            total_notional=float(total_notional),
+            total_fees=float(total_fees),
+            total_slippage_cost=float(total_slippage_cost),
         )
 
     def _recent_activity(self) -> list[RecentActivityItem]:
