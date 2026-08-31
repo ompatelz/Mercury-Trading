@@ -133,6 +133,19 @@ class CampaignDashboardResponse(BaseModel):
     portfolios: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class PaperTradingAnalyticsResponse(BaseModel):
+    """Read-only aggregate execution costs and outcomes for a PAPER replay."""
+
+    order_count: int
+    filled_order_count: int
+    rejected_order_count: int
+    fill_count: int
+    fill_rate: float | None
+    total_notional: float
+    total_fees: float
+    total_slippage_cost: float
+
+
 class PaperTradingDashboardResponse(BaseModel):
     id: UUID
     strategy_name: str
@@ -148,4 +161,5 @@ class PaperTradingDashboardResponse(BaseModel):
     recent_orders: list[dict[str, Any]]
     recent_fills: list[dict[str, Any]]
     rejected_orders: list[dict[str, Any]]
+    analytics: PaperTradingAnalyticsResponse
     system_health: list[ComponentHealth]
