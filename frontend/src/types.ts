@@ -164,10 +164,46 @@ export type PaperSessionDashboard = {
   pnl?: number | null;
   positions: Record<string, unknown>;
   metrics: Record<string, unknown>;
-  recent_orders: Array<Record<string, unknown>>;
-  recent_fills: Array<Record<string, unknown>>;
-  rejected_orders: Array<Record<string, unknown>>;
+  recent_orders: PaperOrder[];
+  recent_fills: PaperFill[];
+  rejected_orders: PaperOrder[];
+  analytics: PaperExecutionAnalytics;
   system_health: ComponentHealth[];
+};
+
+export type PaperOrder = {
+  id: string;
+  strategy_id: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  status: string;
+  created_at: string;
+  rejection_reason: string | null;
+};
+
+export type PaperFill = {
+  id: string;
+  order_id: string;
+  strategy_id: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  price: number;
+  fees: number;
+  slippage_cost: number;
+  timestamp: string;
+};
+
+export type PaperExecutionAnalytics = {
+  order_count: number;
+  filled_order_count: number;
+  rejected_order_count: number;
+  fill_count: number;
+  fill_rate: number | null;
+  total_notional: number;
+  total_fees: number;
+  total_slippage_cost: number;
 };
 
 export type WorkflowEvalDashboard = {
