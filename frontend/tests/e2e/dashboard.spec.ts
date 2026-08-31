@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("shows the dark guided workspace and lets a user select a real experiment", async ({
+test("shows the dark guided workspace and research composer", async ({
   page
 }) => {
   await page.route("**/dashboard/overview", async (route) => {
@@ -12,7 +12,7 @@ test("shows the dark guided workspace and lets a user select a real experiment",
       }
     });
   });
-  await page.route("**/dashboard/experiments?**", async (route) => {
+  await page.route(/\/dashboard\/experiments(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
         items: [
@@ -111,8 +111,6 @@ test("shows the dark guided workspace and lets a user select a real experiment",
   await expect(page.getByText("Turn an idea into")).toBeVisible();
   await expect(page.getByText("How Mercury works")).toBeVisible();
   await expect(page.getByText("Learn through examples")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "MSFT Moving Average Crossover" })
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reproduce this run" })).toBeVisible();
+  await expect(page.getByText("Ask Mercury")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send to Mercury" })).toBeVisible();
 });
