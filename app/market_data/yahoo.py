@@ -26,8 +26,7 @@ class YahooFinanceProvider(MarketDataProvider):
         # ("Close", "MSFT")). Mercury operates on one requested symbol at a time,
         # so the market-field level is the canonical column name.
         frame.columns = [
-            str(column[0]) if isinstance(column, tuple) else str(column)
-            for column in frame.columns
+            str(column[0]) if isinstance(column, tuple) else str(column) for column in frame.columns
         ]
         if "index" in frame.columns:
             frame = frame.rename(columns={"index": "Date"})
