@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,18 @@ def run_research_experiment(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
     return ResearchExperimentResponse.model_validate(experiment)
+
+
+@router.get("/experiments", response_model=list[ResearchExperimentResponse])
+def list_research_experiments(
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 12,
+) -> list[ResearchExperimentResponse]:
+    """Return recent, persisted research sessions for the research desk."""
+    experiments = session.scalars(
+        select(ResearchExperiment).order_by(ResearchExperiment.created_at.desc()).limit(limit)
+    )
+    return [ResearchExperimentResponse.model_validate(experiment) for experiment in experiments]
 
 
 @router.get("/experiments/{experiment_id}", response_model=ResearchExperimentResponse)

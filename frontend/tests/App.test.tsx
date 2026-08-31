@@ -112,10 +112,11 @@ describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string) => {
+      vi.fn((url: string, init?: RequestInit) => {
         if (url.includes("/dashboard/overview")) return ok(overview);
         if (url.includes("/market-data/ingest")) return ok({ symbol: "MSFT", interval: "1d", rows_fetched: 252, rows_inserted: 252 });
-        if (url.includes("/research/experiments")) return ok({ id: "research-1", status: "completed", backtest_experiment_id: "exp-2", hypothesis: { hypothesis: "A trend hypothesis" }, strategy: { strategy: "moving_average_crossover", parameters: {} }, metrics: { sharpe_ratio: 1.2 }, evaluation: { risk_findings: ["Review drawdown"] }, critique: { suggested_next_experiment: "Test more symbols." } });
+        if (url.includes("/research/experiments") && init?.method === "POST") return ok({ id: "research-1", objective: "Test trend behavior", symbol: "MSFT", status: "completed", backtest_experiment_id: "exp-2", hypothesis: { hypothesis: "A trend hypothesis" }, strategy: { strategy: "moving_average_crossover", parameters: {} }, metrics: { sharpe_ratio: 1.2 }, evaluation: { risk_findings: ["Review drawdown"] }, critique: { suggested_next_experiment: "Test more symbols." } });
+        if (url.includes("/research/experiments")) return ok([]);
         if (url.includes("/dashboard/evals")) return ok({ experiments: [] });
         if (url.endsWith("/decisions")) return ok([decision]);
         if (url.includes("/datasets/ds-1/versions")) return ok([datasetVersion]);
@@ -164,7 +165,9 @@ describe("App", () => {
       expect.objectContaining({ method: "POST" })
     ));
     const ingestCall = fetchMock.mock.calls.findIndex(([url]) => String(url).includes("/market-data/ingest"));
-    const researchCall = fetchMock.mock.calls.findIndex(([url]) => String(url).includes("/research/experiments"));
+    const researchCall = fetchMock.mock.calls.findIndex(
+      ([url, init]) => String(url).includes("/research/experiments") && init?.method === "POST"
+    );
     expect(ingestCall).toBeLessThan(researchCall);
     await screen.findByText("A trend hypothesis");
   });

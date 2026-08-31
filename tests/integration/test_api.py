@@ -210,6 +210,10 @@ def test_research_experiment_flow(client: TestClient) -> None:
     assert payload["report"]["performance_metrics"] == payload["metrics"]
     assert payload["workflow_metadata"]["retrieved_memory_count"] == 0
 
+    recent_response = client.get("/research/experiments?limit=3")
+    assert recent_response.status_code == 200
+    assert recent_response.json()[0]["id"] == payload["id"]
+
     memory_response = client.get(f"/experiments/{payload['id']}/memory")
     assert memory_response.status_code == 200
     assert len(memory_response.json()) == 1
