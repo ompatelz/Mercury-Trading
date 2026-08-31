@@ -84,6 +84,8 @@ export type ResearchRunRequest = {
 
 export type ResearchRunResponse = {
   id: string;
+  objective: string;
+  symbol: string;
   status: string;
   backtest_experiment_id: string | null;
   hypothesis: { hypothesis?: string; expected_behavior?: string };
@@ -113,6 +115,10 @@ export function ingestMarketData(request: MarketDataIngestRequest): Promise<Mark
 
 export function runResearchExperiment(request: ResearchRunRequest): Promise<ResearchRunResponse> {
   return postJson("/research/experiments", request);
+}
+
+export function listResearchExperiments(): Promise<ResearchRunResponse[]> {
+  return getJson("/research/experiments?limit=6");
 }
 
 export function getLineage(strategyId: string): Promise<Lineage> {
